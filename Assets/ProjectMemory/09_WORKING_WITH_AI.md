@@ -14,6 +14,22 @@
 7. **Standing rule:** at the end of every task, append an entry to `06_CHANGELOG.md`, update any doc that changed,
    run **Tools > Hide And Seek > Export Project Memory Snapshot**, and tell the owner which docs were updated.
 
+## Git
+
+- Repo: `<project root>`, branch `main`, remote `origin` = https://github.com/VincentLinta/JocFaculta.git.
+- Tracked: `Assets` (with every `.meta`), `Packages`, `ProjectSettings`, `AI_READ_ME_FIRST.md`, `.gitignore`, `.gitattributes`.
+- **Never commit `Library`** (or `Temp`, `Logs`, `UserSettings`, `Captures`, `*.csproj`, `*.sln`). `.gitignore` blocks them;
+  check `git status` before every commit.
+- **Commit after every task** (after the changelog entry and the snapshot export):
+  `git add -- Assets Packages ProjectSettings AI_READ_ME_FIRST.md .gitignore .gitattributes` then `git commit -m "<what changed>"`.
+- **Go back to a previous commit:** close Unity first, then
+  - see history: `git log --oneline`
+  - look at an old version without losing work: `git switch --detach <commit>` (return with `git switch main`)
+  - undo one commit safely (new commit that reverses it): `git revert <commit>`
+  - restore one file from an old commit: `git restore --source <commit> -- <path>`
+- Line endings: `.gitattributes` stores Unity YAML (`.unity`, `.prefab`, `.asset`, `.mat`, `.meta`) and source files with LF.
+- Push is done by the owner: `git push -u origin main` (the AI does not push).
+
 ## How the MCP connection works
 
 - Package: **MCP for Unity** (`com.coplaydev.unity-mcp`, in `Packages/manifest.json`).

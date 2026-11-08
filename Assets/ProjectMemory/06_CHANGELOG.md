@@ -3,6 +3,18 @@
 Reconstructed from the chat sessions of 2026-11-07 and 2026-11-08. All work done by the AI (Kiro) through the
 Unity MCP bridge, at the owner's request. Dates are the session dates.
 
+## 2026-11-08 - Git baseline
+- **What:** removed an empty, half-made `.git` (0 commits, nothing staged); added a Unity `.gitignore` (Library, Temp, Obj,
+  Logs, UserSettings, Builds, MemoryCaptures, Recordings, Captures, IDE files) and `.gitattributes` (text=auto, LF for
+  source and Unity YAML); `git init -b main`; replaced private absolute paths in the docs with `<project root>` and
+  `%USERPROFILE%`; scanned committed files for secrets (none) and files over 50 MB (none);
+  first commit "Baseline v7 - hide, seek and escape (stable)" (687 files); remote `origin` added (not pushed).
+  Git section added to 09_WORKING_WITH_AI.md.
+- **Files:** .gitignore (new), .gitattributes (new), 00_README.md, 06_CHANGELOG.md, 09_WORKING_WITH_AI.md, 10_SCENE_SNAPSHOT.md.
+  No game logic, script, scene or asset changed.
+- **Why:** owner request (version history and a safe way back).
+- **Verified:** `git status` shows nothing from Library, Temp, Logs, UserSettings or Captures tracked.
+
 ## 2026-11-08 - v7: heartbeat, all-keys event, calm music, north wing, random keys, project memory
 - **What:**
   - Distance-based heartbeat (silent at 16+ tiles -> 100% at 2 tiles, 60 -> 150 BPM, +30% hidden, 0.3 s damping,

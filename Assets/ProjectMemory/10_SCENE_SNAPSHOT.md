@@ -1,6 +1,6 @@
 # 10 - Scene snapshot (auto-generated)
 
-Generated: 2026-11-08 15:50 from scene `Assets/Scenes/SampleScene.unity` (edit mode values).
+Generated: 2026-11-08 16:48 from scene `Assets/Scenes/SampleScene.unity` (edit mode values).
 Regenerate with **Tools > Hide And Seek > Export Project Memory Snapshot**. Do not edit by hand.
 
 ## Root hierarchy (2 levels)
@@ -83,16 +83,16 @@ AudioManager  [AudioManager]  children=0
 
 | Name | Position |
 |---|---|
-| ExitDoor | (30, 1.2, -13) |
 | ExitDoor_West | (-30, 1.2, 7) |
+| ExitDoor | (30, 1.2, -13) |
 
 ## Keys (scene positions; at Play the KeyPlacer moves them to random fair tiles)
 
 | Name | Position |
 |---|---|
-| Key_3_Boiler | (-11.5, 1, -12.5) |
 | Key_2_Bathroom | (21.5, 1, 10.5) |
 | Key_1_Storage | (-19.5, 1, 12.5) |
+| Key_3_Boiler | (-11.5, 1, -12.5) |
 
 KeyPlacer: randomizeKeys=True, minDistanceFromPlayerSpawn=6, minDistanceFromKillerSpawn=8, minDistanceBetweenKeys=10, requireDifferentRooms=True, originalPositions=(-19.5, 1, 12.5) (21.5, 1, 10.5) (-11.5, 1, -12.5)
 
