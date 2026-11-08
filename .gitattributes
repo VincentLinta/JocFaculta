@@ -1,0 +1,51 @@
+# Normalize line endings for text files
+* text=auto
+
+# Git config files
+.gitignore text eol=lf
+.gitattributes text eol=lf
+
+# Source and docs
+*.cs text eol=lf
+*.shader text eol=lf
+*.hlsl text eol=lf
+*.cginc text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.xml text eol=lf
+*.inputactions text eol=lf
+*.asmdef text eol=lf
+*.uss text eol=lf
+*.uxml text eol=lf
+
+# Unity YAML files
+*.unity text eol=lf
+*.prefab text eol=lf
+*.asset text eol=lf
+*.mat text eol=lf
+*.meta text eol=lf
+*.anim text eol=lf
+*.controller text eol=lf
+*.physicMaterial text eol=lf
+*.lighting text eol=lf
+*.unity linguist-generated=false
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.psd binary
+*.tga binary
+*.tif binary
+*.exr binary
+*.hdr binary
+*.fbx binary
+*.obj binary
+*.blend binary
+*.wav binary
+*.mp3 binary
+*.ogg binary
+*.dll binary
+*.ttf binary
+*.otf binary
