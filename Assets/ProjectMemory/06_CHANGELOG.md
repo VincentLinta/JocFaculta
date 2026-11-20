@@ -3,6 +3,18 @@
 Reconstructed from the chat sessions of 2026-11-07 and 2026-11-08. All work done by the AI (Kiro) through the
 Unity MCP bridge, at the owner's request. Dates are the session dates.
 
+## 2026-11-20 - Camera: right-click orbit and wheel zoom, both limited
+- **What:** rewrote `CameraFollow` (new Input System only). Right mouse button + drag orbits around the player, limited to
+  +/-30 deg horizontally (`maxYawOffset`) and +/-15 deg vertically (`maxPitchOffset`) around the start angle (yaw 45, pitch 52).
+  Mouse wheel zooms between `minDistance` 12 and `maxDistance` 34 (start 24), eased. Camera input is ignored while
+  `Time.timeScale` is 0 (pause, YOU DIED, YOU ESCAPED), so the wheel no longer reaches the volume slider area.
+  Only the follow point is smoothed; the orbit offset is applied directly, so the player stays centered while rotating.
+- **Fixed:** the `InvalidOperationException ... UnityEngine.Input ... Input System package` spam in the Console came from an
+  older `CameraFollow` that used the legacy `Input.GetMouseButton`; the current file uses `Mouse.current` only.
+- **Files:** Scripts/CameraFollow.cs, 00_README.md (controls), 02_ARCHITECTURE.md, 07_PROTECTED_AND_TESTED.md,
+  06_CHANGELOG.md. Scene and builder untouched (new fields use script defaults).
+- **Not tested:** Play mode (no Unity here). Snapshot (`10_SCENE_SNAPSHOT.md`) not refreshed: run Tools > Hide And Seek > Export Project Memory Snapshot.
+
 ## 2026-11-08 - Git baseline
 - **What:** removed an empty, half-made `.git` (0 commits, nothing staged); added a Unity `.gitignore` (Library, Temp, Obj,
   Logs, UserSettings, Builds, MemoryCaptures, Recordings, Captures, IDE files) and `.gitattributes` (text=auto, LF for

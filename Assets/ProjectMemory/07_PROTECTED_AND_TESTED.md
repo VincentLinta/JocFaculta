@@ -25,5 +25,6 @@ These behaviors were confirmed working by the owner (and/or tested in code by th
 | Calm background music (v7) | Listen in a quiet area; it should change chords every ~4 s |
 | North wing rooms reachable, 8 new hiding spots (v7) | Walk through the doors at x -15 / -7 / 21 in the north wall |
 | Random keys every run, fairness rules, `[Keys]` log (v7) | Restart; keys move; counter 0/3 |
+| Camera: right-drag orbit (+/-30 deg yaw, +/-15 deg pitch), wheel zoom 12..34, frozen in pause (not yet tested in Play) | Hold right mouse and drag; scroll; press ESC and scroll |
 
 v7 rows were tested in code by the AI but not yet confirmed by the owner.

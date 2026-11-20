@@ -26,6 +26,8 @@ under beds and more. The clown only finds a hidden player if he **saw** them hid
 | Space / DASH button | Arm dash (costs 25% stamina; buzzer if not enough) |
 | E / HIDE button | Hide in a spot on or next to your tile / leave it |
 | W / WAIT button | Skip the turn (+25% stamina while hidden) |
+| Right mouse button + drag | Orbit the camera around the player (max +/-30 deg left/right, +/-15 deg up/down) |
+| Mouse wheel | Zoom in / out (limited) |
 | ESC | Pause menu (Resume, Restart, Quit, volume, mute) |
 | R | Restart on the YOU DIED / YOU ESCAPED screen |
 

@@ -87,8 +87,11 @@ YOU DIED and YOU ESCAPED panels. Fields `dangerDistance` 10, `maxVignetteAlpha` 
 Everything audible, generated in code at Awake. See 04_AUDIO.md. Static `AudioManager.Play(Sfx)`.
 
 ### CameraFollow — on `Main Camera`
-Fixed isometric camera smoothly following `target` (Player). Fields `pitch` 52, `yaw` 45, `distance` 24, `smoothTime` 0.25.
-No map bounds/limits exist (it simply follows the player).
+Isometric camera following `target` (Player). Start angle `pitch` 52, `yaw` 45, `distance` 24, `smoothTime` 0.25.
+Right mouse button + drag orbits (`rotationSpeed` 0.2 deg/px, `maxYawOffset` 30, `maxPitchOffset` 15 around the start angle).
+Mouse wheel zooms (`zoomStep` 2.5, `minDistance` 12, `maxDistance` 34, `zoomSmoothing` 12). Input ignored when `Time.timeScale` is 0.
+New Input System only (`Mouse.current`).
+No map bounds exist (it only follows the player); only the orbit and zoom are limited.
 
 ### RuntimeNavMeshBaker — on `NavMeshBaker`
 Bakes the NavMesh in Awake from colliders under `roots` (Map, HidingSpots), layer Default.
