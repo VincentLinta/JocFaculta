@@ -2,7 +2,8 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 
 /// <summary>
-/// Isometric camera that follows the target.
+/// Isometric camera that follows the target (the player), and switches to the killer
+/// while he is hunting (chase phase), so you can watch him search.
 /// Right mouse button + drag: orbit around the player (limited).
 /// Mouse wheel: zoom in / out (limited).
 /// Uses only the new Input System (the legacy UnityEngine.Input class is disabled in this project).
@@ -17,6 +18,12 @@ public class CameraFollow : MonoBehaviour
     public float yaw = 45f;
     public float distance = 24f;
     public float smoothTime = 0.25f;
+
+    [Header("Killer focus")]
+    [Tooltip("While the killer is hunting, the camera centers on him instead of the player.")]
+    public bool followKillerWhenHunting = true;
+    [Tooltip("Smooth time of the glide when the camera switches between player and killer.")]
+    public float switchSmoothTime = 0.7f;
 
     [Header("Rotation (right mouse button + drag)")]
     [Tooltip("Degrees per pixel of mouse movement.")]
@@ -41,6 +48,19 @@ public class CameraFollow : MonoBehaviour
     float targetDistance;
     Vector3 followPoint;     // smoothed position of the target
     Vector3 followVelocity;
+    Transform currentFocus;
+    float switchUntil;
+
+    /// <summary>The player, or the killer while he is hunting.</summary>
+    Transform GetFocus()
+    {
+        if (followKillerWhenHunting)
+        {
+            KillerAI killer = KillerAI.Instance;
+            if (killer != null && killer.IsHunting) return killer.transform;
+        }
+        return target;
+    }
 
     void Start()
     {
@@ -83,7 +103,14 @@ public class CameraFollow : MonoBehaviour
 
         // Only the follow point is smoothed; the orbit offset is applied directly,
         // so rotating and zooming feel instant and the player stays centered.
-        followPoint = Vector3.SmoothDamp(followPoint, target.position, ref followVelocity, smoothTime);
+        Transform focus = GetFocus();
+        if (focus != currentFocus)
+        {
+            currentFocus = focus;
+            switchUntil = Time.unscaledTime + switchSmoothTime * 1.5f; // slower glide while switching
+        }
+        float smooth = Time.unscaledTime < switchUntil ? switchSmoothTime : smoothTime;
+        followPoint = Vector3.SmoothDamp(followPoint, focus.position, ref followVelocity, smooth);
         ApplyTransform();
     }
 
@@ -91,8 +118,10 @@ public class CameraFollow : MonoBehaviour
     public void SnapToTarget()
     {
         if (!target) return;
-        followPoint = target.position;
+        currentFocus = GetFocus();
+        followPoint = currentFocus.position;
         followVelocity = Vector3.zero;
+        switchUntil = 0f;
         ApplyTransform();
     }
 

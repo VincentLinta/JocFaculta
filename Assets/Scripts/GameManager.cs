@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Rendering;
 using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
 
@@ -31,6 +32,21 @@ public class GameManager : MonoBehaviour
     public bool useKeysAndExits = false;
     public int keysRequired = 3;
 
+    [Header("Brightness (applied when the game starts)")]
+    [Tooltip("Brightens the scene at runtime. Untick to get the original dark look.")]
+    public bool brightenScene = true;
+    [Tooltip("Flat ambient light. The original was (0.07, 0.07, 0.09); higher = brighter shadows.")]
+    public Color ambientColor = new Color(0.40f, 0.40f, 0.46f);
+    [Tooltip("Directional light intensity. The original was 0.06.")]
+    public float sunIntensity = 0.7f;
+    [Tooltip("Multiplies the intensity of every lamp / point light.")]
+    public float lampIntensityMultiplier = 2f;
+    [Tooltip("Multiplies the range of every lamp / point light.")]
+    public float lampRangeMultiplier = 1.4f;
+    public Color fogColor = new Color(0.12f, 0.13f, 0.18f);
+    public float fogStart = 45f;
+    public float fogEnd = 130f;
+
     public GameState State { get; private set; } = GameState.Playing;
     public Phase CurrentPhase { get; private set; } = Phase.Hiding;
     /// <summary>Seconds left in the current phase.</summary>
@@ -52,6 +68,31 @@ public class GameManager : MonoBehaviour
         Time.timeScale = 1f;
         PhaseTimeLeft = hideTime;
 
+        if (brightenScene) ApplyBrightness();
+    }
+
+    void ApplyBrightness()
+    {
+        RenderSettings.ambientMode = AmbientMode.Flat;
+        RenderSettings.ambientLight = ambientColor;
+        RenderSettings.fog = true;
+        RenderSettings.fogMode = FogMode.Linear;
+        RenderSettings.fogColor = fogColor;
+        RenderSettings.fogStartDistance = fogStart;
+        RenderSettings.fogEndDistance = fogEnd;
+
+        foreach (Light l in FindObjectsByType<Light>(FindObjectsInactive.Include))
+        {
+            if (l.type == LightType.Directional) l.intensity = sunIntensity;
+            else
+            {
+                l.intensity *= lampIntensityMultiplier;
+                l.range *= lampRangeMultiplier;
+            }
+        }
+
+        Camera cam = Camera.main;
+        if (cam != null && cam.clearFlags == CameraClearFlags.SolidColor) cam.backgroundColor = fogColor;
     }
 
     void Update()
