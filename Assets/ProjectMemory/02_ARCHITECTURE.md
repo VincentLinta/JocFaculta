@@ -31,27 +31,22 @@ Draws the grid line mesh and hover / reach / path highlights.
 - Called by: PlayerController, KillerAI, HidingSpot, KeyPickup, KeyPlacer, ExitDoor, GameUI, AudioManager.
 
 ### PlayerController — on `Player`
-Turn-based player: mouse tile picking, move / dash / hide / exit / wait, stamina, hide animation.
-- Fields: `normalRange` 1, `dashRange` 2, `stepTime` 0.32, `bodyHeight` 1, `maxStamina` 100, `dashCost` 25,
-  `hiddenRegen` 25, `hideMoveTime` 0.35.
-- State: `Tile`, `Stamina`, `DashArmed`, `CanDash`, `DashedLastTurn`, `IsHidden`, `IsBusy`, `CurrentSpot`, `AvailableSpot`,
-  `IsDashMove`, `DashDeniedTime`.
-- Calls: GridManager, `KillerAI.GetFindChanceFor(spot, Tile)` on hide, `HidingSpot.Enter/Exit`, `GameManager.EndPlayerTurn`,
-  `AudioManager.Play` (Footstep, Rustle, Denied). Called by: GameUI buttons, keyboard.
+Real-time. Left click = walk along `grid.FindPath` (tile centers) at `walkSpeed` 4.5; hold Space/Shift = run at `runSpeed` 8
+(drains `runDrain` 25/s, regen `regenRate`, `hiddenRegenRate`, exhausted until `runRecover`). `Tile` follows the position.
+E / HideOrExit: glide into the spot (calls `KillerAI.NotifyPlayerHid`), `IsHidden`; E again leaves. Spots being checked by the killer
+cannot be entered. `IsDashMove` = running (used by PlayerAnimator).
 
 ### PlayerAnimator — on `Player/Model`
 Procedural walk bob, arm/leg swing, dash lean/lunge, idle breathing. Fields: `swingAngle` 32, `strideSpeed` 9,
 `bobHeight` 0.06, `dashLean` 16; part references (torso, legs, arms).
 
 ### KillerAI — on `Killer` (visual under `Killer/Visual`)
-Turn-based clown: random spawn, Patrol / Chase / Search, vision, hearing, catching, witnessed-hide rule.
-- Fields: `tilesPerTurn` 2, `tilesPerKey` 0.34, `maxTilesPerTurn` 3, `stepTime` 0.4, `viewDistance` 13, `viewAngle` 110,
-  `eyeHeight` 2.4, `hearDashTiles` 3, `obstacleMask` Default, `chaseLostTurns` 2, `searchRadiusTiles` 5, `spotsToCheck` 3,
-  `checkDelay` 0.8, `baseFindChance` 0.15 / `chasedFindChance` 0.7 (legacy, no longer used for hidden players),
-  `seenFindChance` 0.95, `closeTiles` 2 (legacy), `blindFindChance` 0, `sameRoomTiles` 5, `minSpawnDistance` 12,
-  `spawnSafetyChecks` true, `waypoints` (15).
-- State: `CurrentState`, `Tile`, `DistanceToPlayer` (world units, every frame), `CheckingSpot`, `LastHideWitnessed`, `LastHideReason`.
-- `TakeTurn()` coroutine is run by GameManager. Calls GridManager, `GameManager.Lose`, `AudioManager.Play(DangerSting)`.
+Parked invisible under the map until `BeginHunt()` (called by GameManager at the start of the Chase phase). Then spawns on a random
+safe tile (`minSpawnDistance`, not in the player's room / sight), shuffles all hiding spots and visits each once:
+Search (walks at `walkSpeed`) -> Check (hand up, `checkTime` 2.5 s, `CheckProgress` drives the HUD bar) -> if the spot is occupied: lose, else next.
+`IsChecked` on the spot prevents rechecks. If `CanSeePlayer()` (player in the open) -> Chase at `chaseSpeed`, catch within `catchDistance`;
+loses sight after `loseSightTime`. If he sees the player enter a spot (`NotifyPlayerHid`) he goes straight there. Sounds: steps, search creaks,
+horn honks, breathing, spawn sting (AudioManager.PlayAt). The right arm is put under a runtime `ArmRPivot` for the raised hand.
 
 ### KillerBob — on `Killer/Visual`
 Idle bob + sway. Fields `bobHeight` 0.06, `bobSpeed` 2.2, `swayAngle` 3. Uses scaled time (freezes in pause).
@@ -74,8 +69,9 @@ Lock light color (red/green), `PlayerNear` (player tile within `reachTiles` 0.8 
 Static `All` list and `AnyPlayerNear`. Fields `doorLight`, `lockedColor`, `openColor`.
 
 ### GameManager — on `GameManager`
-State (Playing / Lost / Won), turn order, keys, pause (timeScale), Restart (scene reload), Quit.
-Fields `keysRequired` 3, `killerTurnDelay` 0.15. Plays AllKeys / Caught / Win sounds. ESC toggles pause; R restarts on end screens.
+Phases: Hiding (`hideTime` 60; ends `hiddenSettleTime` 2 s after the player is hidden, or at 0) -> Chase (`chaseTime` 30, calls `KillerAI.BeginHunt`);
+survive = `Win`. `useKeysAndExits` false disables KeyPlacer/KeyPickup objects at Awake and `ExitDoor` wins. Pause, Lose, Win(msg), Restart, Quit.
+No turns any more.
 
 ### GameUI — on `GameUI` (builds `GameUI/HUD` at runtime)
 HUD: stamina segments, keys, turn indicator, DASH / HIDE / WAIT buttons, prompt, hide status, danger text, red vignette,

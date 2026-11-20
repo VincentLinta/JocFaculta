@@ -5,7 +5,8 @@ These behaviors were confirmed working by the owner (and/or tested in code by th
 
 | Behavior | How to test |
 |---|---|
-| Point-and-click turns on the 2x2 grid; hover, reachable tiles, path preview; YOUR TURN / KILLER'S TURN | Play, hover tiles, click a cyan tile; the killer moves after you |
+| Real-time click-to-walk on the 2x2 grid (hover, path preview); Space/Shift run with stamina (v8, untested) | Click a tile, hold Space |
+| Phases: HIDE 60 s -> SURVIVE 30 s, killer spawns, checks all spots once in random order with a bar, win after 30 s (v8, untested) | Hide, watch the bar; wait 30 s |
 | Walls/doors on the grid, each door one full tile, no half tiles | Look at doorways from the game camera; code check: no walkable tile overlapped by a prop |
 | Move 1 tile, dash 2 tiles for 25% stamina | Space, then click a tile 2 away; one stamina segment goes |
 | Dash refused under 25%: buzzer + red flash, turn not used (do not touch the buzzer) | Use 4 dashes, press Space again |

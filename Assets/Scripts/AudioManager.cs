@@ -4,14 +4,14 @@ using UnityEngine;
 /// <summary>
 /// All game audio, generated in code (no downloaded files).
 /// - Music: low evolving drone + slow heartbeat; a faster heartbeat and tense strings fade in during Chase.
-/// - Sound effects: footstep, rustle, danger sting, caught, win, dash denied.
+/// - Sound effects: footstep, rustle, key chime, danger sting, caught, win, dash denied.
 /// One instance survives scene reloads (Restart), so audio never doubles.
 /// Master volume / mute use AudioListener.volume, so they control everything.
 /// </summary>
 [DefaultExecutionOrder(-300)]
 public class AudioManager : MonoBehaviour
 {
-    public enum Sfx { Footstep, Rustle, DangerSting, Caught, Win, Denied }
+    public enum Sfx { Footstep, Rustle, Key, DangerSting, Caught, Win, Denied, AllKeys, KillerStep, KillerSearch, KillerHonk, KillerBreath, KillerSpawn, Tick }
 
     public static AudioManager Instance { get; private set; }
 
@@ -30,6 +30,7 @@ public class AudioManager : MonoBehaviour
     AudioSource chaseLayer;
     AudioSource sfxSource;
     AudioSource stepSource;
+    AudioSource killerSource;
     AudioClip[] clips;
     float chaseMix;
     float duck = 1f;
@@ -62,7 +63,12 @@ public class AudioManager : MonoBehaviour
     float creepMix;
     float newDuck = 1f;
     float nextEventTime;
-    GameManager.Turn lastTurn = GameManager.Turn.Player;
+    float nextHitTime;
+
+    [Header("Killer sounds (heard by distance and direction)")]
+    [Range(0f, 1f)] public float killerSfxVolume = 1f;
+    [Tooltip("The killer's sounds fade out completely at this distance (world units).")]
+    public float killerHearDistance = 46f;
 
     [Header("Heartbeat (gets louder and faster as the killer gets closer)")]
     [Tooltip("Silent at this distance (tiles) or more.")]
@@ -151,6 +157,8 @@ public class AudioManager : MonoBehaviour
         sfxSource.playOnAwake = false;
         stepSource = gameObject.AddComponent<AudioSource>();
         stepSource.playOnAwake = false;
+        killerSource = gameObject.AddComponent<AudioSource>();
+        killerSource.playOnAwake = false;
 
         // New music layers on top of the old drone + heartbeat.
         baseScale = baseLayerLevel;
@@ -172,13 +180,21 @@ public class AudioManager : MonoBehaviour
 
         SetupMusic();
 
-        clips = new AudioClip[6];
+        clips = new AudioClip[Enum.GetValues(typeof(Sfx)).Length];
+        clips[(int)Sfx.AllKeys] = MakeAllKeys();
         clips[(int)Sfx.Footstep] = MakeFootstep();
         clips[(int)Sfx.Rustle] = MakeRustle();
+        clips[(int)Sfx.Key] = MakeKeyChime();
         clips[(int)Sfx.DangerSting] = MakeDangerSting();
         clips[(int)Sfx.Caught] = MakeCaught();
         clips[(int)Sfx.Win] = MakeWinJingle();
         clips[(int)Sfx.Denied] = MakeDenied();
+        clips[(int)Sfx.KillerStep] = MakeKillerStep();
+        clips[(int)Sfx.KillerSearch] = MakeKillerSearch();
+        clips[(int)Sfx.KillerHonk] = MakeKillerHonk();
+        clips[(int)Sfx.KillerBreath] = MakeKillerBreath();
+        clips[(int)Sfx.KillerSpawn] = MakeKillerSpawn();
+        clips[(int)Sfx.Tick] = MakeTick();
     }
 
     void Update()
@@ -246,12 +262,11 @@ public class AudioManager : MonoBehaviour
             eventSource.PlayOneShot(ev, n * eventLevel * (1f - 0.6f * chaseMusicMix));
         }
 
-        // Driving low hit at the start of each killer turn while the chase music plays.
-        if (gm != null && gm.CurrentTurn != lastTurn)
+        // Driving low hit every ~1.6 s while the chase music plays.
+        if (playing && !gm.IsPaused && chaseMusicMix > 0.3f && Time.unscaledTime >= nextHitTime)
         {
-            lastTurn = gm.CurrentTurn;
-            if (playing && lastTurn == GameManager.Turn.Killer && chaseMusicMix > 0.3f)
-                hitSource.PlayOneShot(turnHit, n * chaseMusicLevel * chaseMusicMix);
+            nextHitTime = Time.unscaledTime + 1.6f;
+            hitSource.PlayOneShot(turnHit, n * chaseMusicLevel * chaseMusicMix);
         }
     }
 
@@ -476,6 +491,22 @@ public class AudioManager : MonoBehaviour
         return clip;
     }
 
+    /// <summary>"Mini win": rising 4-note chime, then a soft door-unlock clunk (about 1.5 s).</summary>
+    static AudioClip MakeAllKeys()
+    {
+        var rng = new System.Random(9);
+        float lp = 0f;
+        return Build("AllKeys", 1.6f, t =>
+        {
+            float chime = 0.22f * (Note(t, 659.3f, 5f) + Note(t - 0.14f, 784f, 5f) + Note(t - 0.28f, 987.8f, 5f) + Note(t - 0.42f, 1318.5f, 4f));
+            float c = t - 0.95f;
+            float noise = (float)rng.NextDouble() * 2f - 1f;
+            lp += (noise - lp) * 0.15f;
+            float clunk = c < 0f ? 0f : 0.45f * Thump(c, 70f) + 0.25f * lp * Mathf.Exp(-c * 30f) + (c > 0.08f ? 0.3f * Thump(c - 0.08f, 95f) : 0f);
+            return chime + clunk;
+        });
+    }
+
     float Fade(float current, float target, float dt)
     {
         float time = target > current ? fadeInTime : fadeOutTime;
@@ -510,6 +541,33 @@ public class AudioManager : MonoBehaviour
             return;
         }
         sfxSource.PlayOneShot(clip, sfxVolume);
+    }
+
+    /// <summary>Plays a sound at a world position: quieter with distance from the player, panned by direction on screen.</summary>
+    public static void PlayAt(Sfx s, Vector3 worldPosition)
+    {
+        if (Instance != null) Instance.PlaySfxAt(s, worldPosition);
+    }
+
+    void PlaySfxAt(Sfx s, Vector3 worldPosition)
+    {
+        PlayerController player = PlayerController.Instance;
+        Vector3 listener = player != null ? player.transform.position : worldPosition;
+        Vector3 offset = worldPosition - listener;
+        offset.y = 0f;
+        float dist = offset.magnitude;
+        float level = Mathf.Clamp01(1f - dist / Mathf.Max(1f, killerHearDistance));
+        level *= level;
+        if (level < 0.01f) return;
+
+        float pan = 0f;
+        Camera cam = Camera.main;
+        if (cam != null && dist > 0.5f)
+            pan = Mathf.Clamp(Vector3.Dot(offset / dist, cam.transform.right) * 0.8f, -0.8f, 0.8f);
+
+        killerSource.panStereo = pan;
+        killerSource.pitch = UnityEngine.Random.Range(0.92f, 1.08f);
+        killerSource.PlayOneShot(clips[(int)s], sfxVolume * killerSfxVolume * level);
     }
 
     AudioSource MakeLoop(AudioClip clip)
@@ -805,6 +863,11 @@ public class AudioManager : MonoBehaviour
         });
     }
 
+    static AudioClip MakeKeyChime()
+    {
+        return Build("KeyChime", 0.8f, t => 0.3f * Note(t, 1318.5f, 6f) + 0.3f * Note(t - 0.12f, 1760f, 5f));
+    }
+
     static AudioClip MakeDangerSting()
     {
         var rng = new System.Random(3);
@@ -855,6 +918,106 @@ public class AudioManager : MonoBehaviour
     {
         return Build("WinJingle", 1.4f, t =>
             0.28f * (Note(t, 523.3f, 4f) + Note(t - 0.15f, 659.3f, 4f) + Note(t - 0.3f, 784f, 4f) + Note(t - 0.45f, 1046.5f, 3f)));
+    }
+
+    // ------------------------------------------------------------------ killer sounds
+
+    /// <summary>Heavy boot step: low heel thud, a scuff and a second softer toe thud.</summary>
+    static AudioClip MakeKillerStep()
+    {
+        var rng = new System.Random(11);
+        float lp = 0f;
+        return Build("KillerStep", 0.35f, t =>
+        {
+            lp += ((float)rng.NextDouble() * 2f - 1f - lp) * 0.12f;
+            float heel = 0.9f * Thump(t, 62f);
+            float scuff = 0.5f * lp * Mathf.Exp(-t * 18f);
+            float toe = 0.35f * Thump(t - 0.11f, 78f);
+            return 0.8f * (heel + scuff + toe);
+        });
+    }
+
+    /// <summary>Searching a hiding spot: a creaking hinge mixed with rummaging noise (about 0.9 s).</summary>
+    static AudioClip MakeKillerSearch()
+    {
+        var rng = new System.Random(21);
+        const float len = 0.9f;
+        float ph = 0f, lp = 0f, lp2 = 0f;
+        return Build("KillerSearch", len, t =>
+        {
+            float env = Mathf.Sin(Mathf.PI * t / len);
+            float rate = 22f + 14f * t / len;
+            ph += rate / Rate;
+            float pulse = (ph % 1f) < 0.1f ? 1f : 0f;
+            lp += (pulse - lp) * 0.25f;
+            float creak = lp * Mathf.Sin(TwoPi * (300f + 120f * t / len) * t);
+            float n = (float)rng.NextDouble() * 2f - 1f;
+            lp2 += (n - lp2) * 0.2f;
+            float rummage = lp2 * (0.5f + 0.5f * Sin(9f, t));
+            return 0.35f * env * (creak * 0.9f + rummage * 0.7f);
+        });
+    }
+
+    /// <summary>Squeaky clown horn: a bending, slightly wobbly buzzy tone.</summary>
+    static AudioClip MakeKillerHonk()
+    {
+        const float len = 0.55f;
+        float phase = 0f;
+        return Build("KillerHonk", len, t =>
+        {
+            float f = t < 0.2f ? Mathf.Lerp(330f, 440f, t / 0.2f) : Mathf.Lerp(440f, 280f, (t - 0.2f) / (len - 0.2f));
+            f *= 1f + 0.015f * Sin(30f, t);
+            phase += f / Rate;
+            float x = phase % 1f;
+            float saw = 2f * x - 1f;
+            float square = x < 0.5f ? 1f : -1f;
+            float env = Mathf.Clamp01(t / 0.015f) * Mathf.Exp(-Mathf.Max(0f, t - 0.25f) * 6f);
+            return 0.3f * env * (0.6f * saw + 0.4f * square);
+        });
+    }
+
+    /// <summary>Heavy raspy breathing: one breath in, one breath out (about 1.8 s).</summary>
+    static AudioClip MakeKillerBreath()
+    {
+        var rng = new System.Random(31);
+        const float len = 1.8f;
+        float a = 0f, b = 0f;
+        return Build("KillerBreath", len, t =>
+        {
+            float n = (float)rng.NextDouble() * 2f - 1f;
+            a += (n - a) * 0.18f;
+            b += (a - b) * 0.25f;
+            float inhale = Mathf.Max(0f, Mathf.Sin(Mathf.PI * Mathf.Clamp01(t / 0.7f)));
+            float exhale = t > 0.8f ? Mathf.Max(0f, Mathf.Sin(Mathf.PI * Mathf.Clamp01((t - 0.8f) / 0.95f))) : 0f;
+            float rasp = 0.7f + 0.3f * Sin(55f, t);
+            return 0.5f * b * (0.7f * inhale + exhale) * rasp;
+        });
+    }
+
+    /// <summary>The killer arrives: deep boom, a falling growl and a hiss.</summary>
+    static AudioClip MakeKillerSpawn()
+    {
+        var rng = new System.Random(41);
+        float lp = 0f, ph = 0f;
+        const float len = 2.4f;
+        return Build("KillerSpawn", len, t =>
+        {
+            float boom = 0.9f * Thump(t, 40f) + 0.4f * Sin(30f, t) * Mathf.Exp(-t * 2.5f);
+            float f = Mathf.Lerp(150f, 60f, Mathf.Clamp01(t / 1.6f));
+            ph += f / Rate;
+            float growl = (Mathf.Sign(Mathf.Sin(TwoPi * ph)) * 0.5f + 0.5f * Mathf.Sin(TwoPi * ph * 0.5f)) * (0.6f + 0.4f * Sin(28f, t));
+            float swell = Mathf.Clamp01(t / 0.5f) * Mathf.Clamp01((len - t) / 1f);
+            float n = (float)rng.NextDouble() * 2f - 1f;
+            lp += (n - lp) * 0.1f;
+            float hiss = lp * Mathf.Exp(-t * 3f);
+            return 0.7f * (boom + 0.22f * growl * swell + 0.3f * hiss);
+        });
+    }
+
+    /// <summary>Short clock tick for the last 10 seconds of the hiding phase.</summary>
+    static AudioClip MakeTick()
+    {
+        return Build("Tick", 0.1f, t => 0.4f * Sin(1200f, t) * Mathf.Exp(-t * 60f));
     }
 
     static AudioClip MakeDenied()

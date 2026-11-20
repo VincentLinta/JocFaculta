@@ -5,53 +5,64 @@ using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 
 /// <summary>
-/// Turn-based player on the tile grid.
-/// Click a highlighted tile to move (1 tile, or 2 with Dash). E hides / leaves a spot. W waits.
-/// Every action ends the player's turn, then the killer moves.
+/// Real-time player on the tile grid.
+/// Left click a tile: walk there along the shortest path (click again to change your mind).
+/// Hold Space or Left Shift: run (uses stamina). E: hide in a nearby spot / leave it.
 /// </summary>
 public class PlayerController : MonoBehaviour
 {
     public static PlayerController Instance { get; private set; }
 
-    [Header("Moves")]
-    public int normalRange = 1;
-    public int dashRange = 2;
-    [Tooltip("Seconds to walk one tile.")]
-    public float stepTime = 0.22f;
+    [Header("Movement (world units per second, one tile = 2 units)")]
+    public float walkSpeed = 4.5f;
+    public float runSpeed = 8f;
+    [Tooltip("Degrees per second the body turns towards the walking direction.")]
+    public float turnSpeed = 720f;
     [Tooltip("Height of the capsule's center above the floor.")]
     public float bodyHeight = 1f;
+    [Tooltip("Distance walked per footstep sound.")]
+    public float stride = 2.2f;
 
-    [Header("Stamina")]
+    [Header("Stamina (used for running)")]
     public float maxStamina = 100f;
-    [Tooltip("Each dash costs this much (25 = 4 dashes from full).")]
-    public float dashCost = 25f;
-    [Tooltip("Gained per turn spent hidden.")]
-    public float hiddenRegen = 25f;
+    [Tooltip("Stamina lost per second while running (25 = 4 seconds from full).")]
+    public float runDrain = 25f;
+    [Tooltip("Stamina gained per second while standing still.")]
+    public float regenRate = 12f;
+    [Tooltip("Stamina gained per second while hidden.")]
+    public float hiddenRegenRate = 30f;
+    [Tooltip("After running out you can run again once stamina is back to this level.")]
+    public float runRecover = 25f;
 
     [Header("Hiding")]
     public float hideMoveTime = 0.35f;
 
+    /// <summary>The tile the player stands on (the spot's tile while hidden).</summary>
     public Vector2Int Tile { get; private set; }
     public float Stamina { get; private set; }
-    public bool DashArmed { get; private set; }
-    public bool CanDash => Stamina >= dashCost - 0.01f;
-    /// <summary>True if the last action was a dash (the killer can hear it).</summary>
-    public bool DashedLastTurn { get; private set; }
+    public bool IsRunning { get; private set; }
+    /// <summary>Used by the body animation (leans forward while running).</summary>
+    public bool IsDashMove => IsRunning;
     public bool IsHidden { get; private set; }
-    /// <summary>True while an action animation is playing.</summary>
+    /// <summary>True while the hide / leave animation plays.</summary>
     public bool IsBusy { get; private set; }
     public HidingSpot CurrentSpot { get; private set; }
     /// <summary>A free hiding spot on or next to the player's tile, or null.</summary>
     public HidingSpot AvailableSpot { get; private set; }
-    /// <summary>True while a dash move is being animated (used by the body animation).</summary>
-    public bool IsDashMove { get; private set; }
-    /// <summary>Unscaled time of the last refused dash (UI flashes red after it).</summary>
-    public float DashDeniedTime { get; private set; } = -10f;
 
     GridManager grid;
     Camera cam;
     Renderer[] renderers;
     Light[] lights;
+
+    List<Vector2Int> path;
+    int pathIndex;
+    bool exhausted;
+    float stepAccum;
+
+    Vector2Int previewGoal = new Vector2Int(-999, -999);
+    Vector2Int previewFrom = new Vector2Int(-999, -999);
+    List<Vector2Int> previewPath;
 
     void Awake()
     {
@@ -71,50 +82,44 @@ public class PlayerController : MonoBehaviour
 
     Vector3 TilePosition(Vector2Int t) => grid.TileCenter(t) + Vector3.up * bodyHeight;
 
-    bool CanActNow()
-    {
-        GameManager gm = GameManager.Instance;
-        return gm != null && gm.CanPlayerAct && !IsBusy;
-    }
-
     void Update()
     {
         if (grid == null) return;
-        if (DashArmed && !CanDash) DashArmed = false;
+        GameManager gm = GameManager.Instance;
         AvailableSpot = IsHidden ? null : FindSpot();
 
-        if (!CanActNow())
+        bool canAct = gm != null && gm.CanPlayerAct && !IsBusy;
+        if (!canAct)
         {
             grid.ClearHighlights();
+            IsRunning = false;
             return;
         }
 
         Keyboard kb = Keyboard.current;
-        if (kb != null)
+        if (kb != null && kb.eKey.wasPressedThisFrame)
         {
-            if (kb.spaceKey.wasPressedThisFrame) ToggleDash();
-            if (kb.wKey.wasPressedThisFrame) { Wait(); return; }
-            if (kb.eKey.wasPressedThisFrame) { HideOrExit(); return; }
-        }
-
-        UpdateMouse();
-    }
-
-    // ------------------------------------------------------------------ mouse + tiles
-
-    void UpdateMouse()
-    {
-        if (IsHidden)
-        {
-            grid.ClearHighlights();
+            HideOrExit();
             return;
         }
 
-        int range = DashArmed ? dashRange : normalRange;
-        Vector2Int? killerTile = KillerAI.Instance ? KillerAI.Instance.Tile : (Vector2Int?)null;
-        Dictionary<Vector2Int, Vector2Int> reach = grid.Reachable(Tile, range, killerTile);
-        grid.ShowReach(reach.Keys, Tile);
+        if (IsHidden)
+        {
+            grid.ClearHighlights();
+            IsRunning = false;
+            Stamina = Mathf.Min(maxStamina, Stamina + hiddenRegenRate * Time.deltaTime);
+            return;
+        }
 
+        bool runKey = kb != null && (kb.spaceKey.isPressed || kb.leftShiftKey.isPressed);
+        UpdateMouse();
+        Move(runKey);
+    }
+
+    // ------------------------------------------------------------------ mouse + walking
+
+    void UpdateMouse()
+    {
         Mouse mouse = Mouse.current;
         if (mouse == null || cam == null) return;
 
@@ -132,97 +137,113 @@ public class PlayerController : MonoBehaviour
         }
         grid.ShowHover(hovered);
 
-        List<Vector2Int> path = null;
-        if (hovered.HasValue && hovered.Value != Tile && reach.ContainsKey(hovered.Value))
-            path = GridManager.PathTo(reach, Tile, hovered.Value);
-        grid.ShowPath(path);
+        // While walking show the rest of the path; otherwise the path to the tile under the mouse.
+        if (path != null)
+        {
+            grid.ShowPath(path.GetRange(pathIndex, path.Count - pathIndex));
+        }
+        else if (hovered.HasValue && hovered.Value != Tile)
+        {
+            if (previewGoal != hovered.Value || previewFrom != Tile)
+            {
+                previewGoal = hovered.Value;
+                previewFrom = Tile;
+                previewPath = grid.FindPath(Tile, hovered.Value);
+            }
+            grid.ShowPath(previewPath);
+        }
+        else grid.ShowPath(null);
 
-        if (path != null && mouse.leftButton.wasPressedThisFrame)
-            StartCoroutine(MoveAction(path));
+        if (hovered.HasValue && hovered.Value != Tile && mouse.leftButton.wasPressedThisFrame)
+            StartWalk(hovered.Value);
     }
 
-    // ------------------------------------------------------------------ actions (buttons call these)
-
-    /// <summary>Arms / disarms the dash for the next move.</summary>
-    public void ToggleDash()
+    void StartWalk(Vector2Int goal)
     {
-        if (!CanActNow() || IsHidden) return;
-        if (!CanDash)
+        List<Vector2Int> p = grid.FindPath(Tile, goal);
+        if (p == null || p.Count == 0) return;
+        path = p;
+        pathIndex = 0;
+    }
+
+    void Move(bool runKey)
+    {
+        float dt = Time.deltaTime;
+        bool walking = path != null && pathIndex < path.Count;
+        IsRunning = false;
+
+        if (!walking)
         {
-            // Not enough stamina: buzz + red flash, the turn is NOT used.
-            DashArmed = false;
-            DashDeniedTime = Time.unscaledTime;
-            AudioManager.Play(AudioManager.Sfx.Denied);
+            path = null;
+            Regen(regenRate * dt);
             return;
         }
-        DashArmed = !DashArmed;
+
+        bool run = runKey && !exhausted && Stamina > 0f;
+        float speed = walkSpeed;
+        if (run)
+        {
+            speed = runSpeed;
+            IsRunning = true;
+            Stamina = Mathf.Max(0f, Stamina - runDrain * dt);
+            if (Stamina <= 0f) exhausted = true;
+        }
+        else Regen(regenRate * 0.5f * dt); // slow recovery while walking
+
+        Vector3 pos = transform.position;
+        Vector3 target = TilePosition(path[pathIndex]);
+        Vector3 next = Vector3.MoveTowards(pos, target, speed * dt);
+
+        Vector3 dir = target - pos;
+        dir.y = 0f;
+        if (dir.sqrMagnitude > 0.0001f)
+            transform.rotation = Quaternion.RotateTowards(transform.rotation, Quaternion.LookRotation(dir), turnSpeed * dt);
+        transform.position = next;
+        Tile = grid.WorldToTile(next);
+
+        stepAccum += Vector3.Distance(pos, next);
+        float strideNow = run ? stride * 1.3f : stride;
+        if (stepAccum >= strideNow)
+        {
+            stepAccum = 0f;
+            AudioManager.Play(AudioManager.Sfx.Footstep);
+        }
+
+        if ((next - target).sqrMagnitude < 0.0004f)
+        {
+            pathIndex++;
+            if (pathIndex >= path.Count) path = null;
+        }
     }
 
-    /// <summary>Skips the turn. While hidden this refills stamina.</summary>
-    public void Wait()
+    void Regen(float amount)
     {
-        if (!CanActNow()) return;
-        StartCoroutine(WaitAction());
+        Stamina = Mathf.Min(maxStamina, Stamina + amount);
+        if (exhausted && Stamina >= runRecover) exhausted = false;
     }
+
+    // ------------------------------------------------------------------ hiding (E key / HIDE button)
 
     /// <summary>Hides in the nearby spot, or leaves the current one.</summary>
     public void HideOrExit()
     {
-        if (!CanActNow()) return;
+        GameManager gm = GameManager.Instance;
+        if (gm == null || !gm.CanPlayerAct || IsBusy) return;
         if (IsHidden) StartCoroutine(ExitAction());
         else if (AvailableSpot != null) StartCoroutine(EnterAction(AvailableSpot));
-    }
-
-    IEnumerator MoveAction(List<Vector2Int> path)
-    {
-        IsBusy = true;
-        grid.ClearHighlights();
-
-        bool dash = path.Count > normalRange;
-        if (dash) Stamina = Mathf.Max(0f, Stamina - dashCost);
-        DashArmed = false;
-        DashedLastTurn = dash;
-        IsDashMove = dash;
-
-        foreach (Vector2Int t in path)
-        {
-            AudioManager.Play(AudioManager.Sfx.Footstep);
-            yield return StepTo(t);
-            Tile = t;
-            yield return null; // let keys / exit react to the new tile
-            if (!GameManager.Instance.IsPlaying)
-            {
-                IsBusy = false;
-                IsDashMove = false;
-                yield break;
-            }
-        }
-        IsDashMove = false;
-        FinishAction();
-    }
-
-    IEnumerator WaitAction()
-    {
-        IsBusy = true;
-        grid.ClearHighlights();
-        DashedLastTurn = false;
-        DashArmed = false;
-        if (IsHidden) Stamina = Mathf.Min(maxStamina, Stamina + hiddenRegen);
-        yield return new WaitForSeconds(0.15f);
-        FinishAction();
     }
 
     IEnumerator EnterAction(HidingSpot spot)
     {
         if (spot.isOccupied) yield break; // one person per spot
         IsBusy = true;
+        IsRunning = false;
+        path = null;
         grid.ClearHighlights();
-        DashedLastTurn = false;
-        DashArmed = false;
 
-        // The killer decides how suspicious this spot is (did it see us go in?).
-        float chance = KillerAI.Instance ? KillerAI.Instance.GetFindChanceFor(spot, Tile) : 0.15f;
-        spot.Enter(chance);
+        // The killer (if he is already hunting) decides whether he saw us go in.
+        if (KillerAI.Instance != null) KillerAI.Instance.NotifyPlayerHid(spot, Tile);
+        spot.Enter();
         CurrentSpot = spot;
         AudioManager.Play(AudioManager.Sfx.Rustle);
 
@@ -231,7 +252,7 @@ public class PlayerController : MonoBehaviour
         yield return MoveTo(spot.hidePoint.position, spot.hidePoint.rotation, hideMoveTime * 1.5f);
         SetVisible(false);
         IsHidden = true;
-        FinishAction();
+        IsBusy = false;
     }
 
     IEnumerator ExitAction()
@@ -239,7 +260,6 @@ public class PlayerController : MonoBehaviour
         HidingSpot spot = CurrentSpot;
         if (!TryGetExitTile(spot, out Vector2Int exitTile)) yield break; // killer is blocking the way out
         IsBusy = true;
-        DashedLastTurn = false;
 
         SetVisible(true);
         IsHidden = false;
@@ -248,13 +268,7 @@ public class PlayerController : MonoBehaviour
         spot.Exit();
         CurrentSpot = null;
         Tile = exitTile;
-        FinishAction();
-    }
-
-    void FinishAction()
-    {
         IsBusy = false;
-        if (GameManager.Instance) GameManager.Instance.EndPlayerTurn();
     }
 
     // ------------------------------------------------------------------ helpers
@@ -262,11 +276,13 @@ public class PlayerController : MonoBehaviour
     HidingSpot FindSpot()
     {
         // Same rule as the outline: on the spot's tile, next to it, or right next to the object.
+        KillerAI killer = KillerAI.Instance;
         HidingSpot best = null;
         float bestDist = float.MaxValue;
         foreach (HidingSpot spot in HidingSpot.All)
         {
             if (spot.isOccupied || !spot.IsInReach(Tile, grid)) continue;
+            if (killer != null && killer.CheckingSpot == spot) continue; // the killer is standing there
             float d = spot.Tile == Tile ? -1f : Vector3.Distance(transform.position, spot.transform.position);
             if (d < bestDist)
             {
@@ -292,15 +308,6 @@ public class PlayerController : MonoBehaviour
             }
         }
         return false;
-    }
-
-    IEnumerator StepTo(Vector2Int t)
-    {
-        Vector3 target = TilePosition(t);
-        Vector3 dir = target - transform.position;
-        dir.y = 0f;
-        Quaternion rot = dir.sqrMagnitude > 0.001f ? Quaternion.LookRotation(dir) : transform.rotation;
-        yield return MoveTo(target, rot, stepTime);
     }
 
     IEnumerator MoveTo(Vector3 position, Quaternion rotation, float duration)

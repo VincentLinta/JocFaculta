@@ -3,7 +3,7 @@ using UnityEngine;
 
 /// <summary>
 /// A place where the player can hide (wardrobe, locker, barrel...).
-/// The killer may check it while searching. Each spot owns one grid tile (its enter tile).
+/// The killer checks every spot once, in random order. Each spot owns one grid tile (its enter tile).
 /// The player can hide from the enter tile, a tile next to it, or a tile right next to the object.
 /// While the player is in reach, the object gets a pulsing outline.
 /// </summary>
@@ -34,8 +34,8 @@ public class HidingSpot : MonoBehaviour
     [Tooltip("How much bigger the outline shell is than the object.")]
     public float outlineGrow = 0.09f;
 
-    /// <summary>Chance (0-1) the killer finds the player when checking this spot. Set on enter.</summary>
-    [HideInInspector] public float findChance;
+    /// <summary>True once the killer has finished checking this spot (he never checks a spot twice).</summary>
+    public bool IsChecked { get; private set; }
 
     /// <summary>The grid tile you stand on to use this spot.</summary>
     public Vector2Int Tile { get; private set; }
@@ -96,17 +96,46 @@ public class HidingSpot : MonoBehaviour
     }
 
     /// <summary>Called by the player when hiding here.</summary>
-    public void Enter(float chance)
+    public void Enter()
     {
         isOccupied = true;
-        findChance = Mathf.Clamp01(chance);
     }
 
     /// <summary>Called by the player when leaving.</summary>
     public void Exit()
     {
         isOccupied = false;
-        findChance = 0f;
+    }
+
+    /// <summary>Called by the killer when he finishes checking this spot.</summary>
+    public void MarkChecked()
+    {
+        IsChecked = true;
+    }
+
+    /// <summary>How many spots the killer has checked so far.</summary>
+    public static int CountChecked()
+    {
+        int n = 0;
+        foreach (HidingSpot s in All) if (s.IsChecked) n++;
+        return n;
+    }
+
+    /// <summary>World point above the object where the killer's progress bar is drawn.</summary>
+    public Vector3 BarAnchor
+    {
+        get
+        {
+            bool any = false;
+            Bounds b = new Bounds(transform.position, Vector3.zero);
+            foreach (Renderer r in GetComponentsInChildren<Renderer>())
+            {
+                if (r.gameObject.name == "Outline") continue; // the pulsing outline shell is not part of the object
+                if (!any) { b = r.bounds; any = true; }
+                else b.Encapsulate(r.bounds);
+            }
+            return new Vector3(b.center.x, b.max.y + 0.7f, b.center.z);
+        }
     }
 
     /// <summary>

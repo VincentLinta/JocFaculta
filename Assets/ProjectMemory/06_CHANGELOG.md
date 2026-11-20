@@ -3,6 +3,17 @@
 Reconstructed from the chat sessions of 2026-11-07 and 2026-11-08. All work done by the AI (Kiro) through the
 Unity MCP bridge, at the owner's request. Dates are the session dates.
 
+## 2026-11-20 - Real-time game: hiding phase + chase phase, killer checks all spots
+- **Owner request.** Turns removed. Phase 1 Hiding: 60 s, player walks in real time (click to walk, Space/Shift run). It ends 2 s after the
+  player is hidden or when the time runs out. Phase 2 Chase: the killer spawns, visits every hiding spot once in random order, stands there
+  with a raised hand while a bar fills above the spot (2.5 s); occupied spot = YOU DIED. 30 s later: YOU SURVIVED.
+- **Rules I added (tell me to change):** he chases and catches a player he can see in the open; if he sees you enter a spot he goes straight to it
+  (even if already checked); you can leave a hiding spot and sneak into an already checked one. Keys/exits are switched off (`useKeysAndExits`).
+- **Killer sounds:** heavy steps, search creak/rummage, clown horn honk, breathing, spawn sting (all by distance + stereo pan); tick in the last 10 s.
+- **Camera:** +/-50 deg left/right, 20 deg down, 15 deg up.
+- **Files:** GameManager, PlayerController, KillerAI (rewritten), HidingSpot, GameUI, AudioManager, ExitDoor, CameraFollow, Editor/HideAndSeekBuilder (removed old field assignments).
+- **Not tested:** no Unity here, code not compiled. Scene untouched. Run Tools > Hide And Seek > Export Project Memory Snapshot. `01_GAME_DESIGN.md`, `04_AUDIO.md`, `05_TUNING_GUIDE.md` still describe the old turn-based rules in places.
+
 ## 2026-11-20 - Camera: right-click orbit and wheel zoom, both limited
 - **What:** rewrote `CameraFollow` (new Input System only). Right mouse button + drag orbits around the player, limited to
   +/-30 deg horizontally (`maxYawOffset`) and +/-15 deg vertically (`maxPitchOffset`) around the start angle (yaw 45, pitch 52).

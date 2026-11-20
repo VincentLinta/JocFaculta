@@ -1,15 +1,16 @@
 # 00 - README
 
-> **RO (rezumat):** Joc horror de ascunselea pe ture, pe o grilă de pătrățele 2x2, făcut doar din forme Unity.
-> Găsești 3 chei, ieși pe una din cele 2 uși și te ascunzi de clovnul ucigaș.
+> **RO (rezumat):** Joc horror de ascunselea în timp real (fază de ascuns 60 s, apoi fază de căutare 30 s), pe o grilă de pătrățele 2x2, făcut doar din forme Unity.
+> Te ascunzi 60 s, apoi clovnul verifică locurile de ascuns în ordine aleatorie; supraviețuiești 30 s.
 > Citește întâi `09_WORKING_WITH_AI.md`: nu rula niciodată Tools > Hide And Seek peste scena existentă.
 
 ## What the game is
 
-A turn-based, point-and-click hide-and-seek horror game, in the spirit of *Scream 7 - Hide & Scream*.
-You are a human in an abandoned warehouse/house at night. A masked clown hunts you. Find 3 keys
-(random positions every run), then reach one of the two exits. Hide in wardrobes, lockers, barrels,
-under beds and more. The clown only finds a hidden player if he **saw** them hide.
+A real-time, point-and-click hide-and-seek horror game, in the spirit of *Scream 7 - Hide & Scream*.
+You are a human in an abandoned warehouse/house at night. Two phases: **Hiding** (60 s to hide, the clown is not
+there yet; it ends 2 s after you are hidden or when time runs out) and **Chase** (the clown spawns, visits every hiding
+spot once in random order, raises a hand and fills a bar above each spot; if you are inside you are found). Survive 30 s
+and you win. Keys/exits of the old goal are switched off (`GameManager.useKeysAndExits`).
 
 - Look: fixed isometric camera (pitch 52 deg, yaw 45 deg), dark, steady warm lamps, light fog, all from Unity primitives.
 - No downloaded assets: every model is primitives, every sound and all music is generated in code (`AudioManager`).
@@ -22,14 +23,13 @@ under beds and more. The clown only finds a hidden player if he **saw** them hid
 
 | Input | Action |
 |---|---|
-| Left click on a tile | Move (1 tile; 2 with dash) |
-| Space / DASH button | Arm dash (costs 25% stamina; buzzer if not enough) |
+| Left click on a tile | Walk there (real time, shortest path; click again to redirect) |
+| Hold Space or Left Shift | Run (uses stamina, 4 s from full; refills when still / hidden) |
 | E / HIDE button | Hide in a spot on or next to your tile / leave it |
-| W / WAIT button | Skip the turn (+25% stamina while hidden) |
-| Right mouse button + drag | Orbit the camera around the player (max +/-30 deg left/right, +/-15 deg up/down) |
+| Right mouse button + drag | Orbit the camera around the player (max +/-50 deg left/right, 20 deg down / 15 deg up) |
 | Mouse wheel | Zoom in / out (limited) |
 | ESC | Pause menu (Resume, Restart, Quit, volume, mute) |
-| R | Restart on the YOU DIED / YOU ESCAPED screen |
+| R | Restart on the YOU DIED / YOU SURVIVED screen |
 
 ## How to read these docs
 

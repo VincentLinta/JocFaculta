@@ -1,87 +1,101 @@
-using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Turn-based clown killer on the tile grid. Moves 2 tiles per turn.
-/// Patrol: walks between waypoints.
-/// Chase: sees the player (vision cone + line of sight) or hears a dash within a few tiles.
-/// Search: goes to the last known tile, then checks nearby hiding spots one by one.
+/// Real-time clown killer. He is not in the level during the hiding phase.
+/// When the chase phase starts (BeginHunt) he spawns on a random tile far from the player and visits
+/// EVERY hiding spot once, in random order. At each spot he stands still, raises a hand and a progress bar
+/// fills above the spot (checkTime seconds). When the bar is full: if the player is inside, the player is
+/// found; otherwise he walks to the next spot. A spot is never checked twice.
+/// Two exceptions: if he sees the player in the open he chases and catches them, and if he sees the player
+/// go into a spot he goes straight to that spot.
 /// </summary>
 public class KillerAI : MonoBehaviour
 {
-    public enum State { Patrol, Chase, Search }
+    public enum State { Waiting, Search, Check, Chase }
 
     public static KillerAI Instance { get; private set; }
 
-    [Header("Movement")]
-    public float tilesPerTurn = 2f;
-    public float maxTilesPerTurn = 3f;
-    [Tooltip("Seconds to walk one tile.")]
-    public float stepTime = 0.28f;
+    [Header("Movement (world units per second, one tile = 2 units)")]
+    public float walkSpeed = 6.5f;
+    public float chaseSpeed = 7.5f;
 
     [Header("Senses")]
     public float viewDistance = 13f;
     [Tooltip("Full width of the vision cone in degrees.")]
     public float viewAngle = 110f;
     public float eyeHeight = 2.4f;
-    [Tooltip("A dash is heard within this many tiles.")]
-    public float hearDashTiles = 6f;
     [Tooltip("What blocks line of sight.")]
     public LayerMask obstacleMask = 1;
-
-    [Header("Search")]
-    [Tooltip("Turns without seeing the player before a chase becomes a search.")]
-    public int chaseLostTurns = 2;
-    [Tooltip("Hiding spots this close (tiles) to the last known tile get checked.")]
-    public float searchRadiusTiles = 10f;
-    public int spotsToCheck = 3;
-    [Tooltip("Seconds spent opening a hiding spot.")]
-    public float checkDelay = 0.8f;
-
-    [Header("Find chances")]
-    public float baseFindChance = 0.15f;
-    public float chasedFindChance = 0.7f;
-    public float seenFindChance = 0.95f;
-    [Tooltip("Hiding this close (tiles) to the killer counts as 'close'.")]
-    public float closeTiles = 4f;
-
-    [Header("Hiding rules")]
-    [Tooltip("Chance to find a hidden player the killer did NOT see hide. 0 = never.")]
-    [Range(0f, 1f)] public float blindFindChance = 0f;
-    [Tooltip("Same room and this close (tiles) = notices the player hiding, even from behind.")]
+    [Tooltip("Same room and this close (tiles) = he notices the player going into a spot, even from behind.")]
     public float sameRoomTiles = 5f;
 
+    [Header("Checking a hiding spot")]
+    [Tooltip("Seconds the progress bar takes to fill.")]
+    public float checkTime = 2.5f;
+    [Tooltip("How far the raised hand goes up (degrees).")]
+    public float raiseAngle = 105f;
+
+    [Header("Chasing a player he can see")]
+    public float catchDistance = 2.2f;
+    [Tooltip("Seconds without seeing the player before he goes back to checking spots.")]
+    public float loseSightTime = 3f;
+
     [Header("Random spawn")]
-    [Tooltip("Minimum path distance (tiles) from the player's spawn. 0 = anywhere.")]
+    [Tooltip("Minimum path distance (tiles) from the player. 0 = anywhere.")]
     public int minSpawnDistance = 12;
-    [Tooltip("Never spawn in the player's starting room or in the player's line of sight. Off + distance 0 = fully random.")]
+    [Tooltip("Never spawn in the player's room or in the player's line of sight.")]
     public bool spawnSafetyChecks = true;
 
+    [Header("Sounds")]
+    [Tooltip("Distance walked per footstep sound.")]
+    public float stepStride = 2.6f;
+    [Tooltip("Seconds between clown horn honks (random between the two).")]
+    public Vector2 honkInterval = new Vector2(6f, 12f);
+    [Tooltip("Seconds between breaths (random between the two), only when he is close.")]
+    public Vector2 breathInterval = new Vector2(3f, 5f);
+    [Tooltip("He breathes when closer than this (world units).")]
+    public float breathDistance = 26f;
+
+    [Tooltip("Unused since the turn-based game was removed (kept so the scene keeps its data).")]
     public Transform[] waypoints;
 
-    /// <summary>Result of the last hide check (used by the UI and the music).</summary>
-    public bool LastHideWitnessed { get; private set; }
-    public string LastHideReason { get; private set; } = "none";
-
-    public State CurrentState { get; private set; }
-    public Vector2Int Tile { get; private set; }
-    /// <summary>Flat distance to the player (used by the UI vignette).</summary>
+    public State CurrentState { get; private set; } = State.Waiting;
+    /// <summary>True once he has spawned (chase phase).</summary>
+    public bool IsHunting => hunting;
+    /// <summary>The tile he stands on (-999 before he spawns).</summary>
+    public Vector2Int Tile => hunting && grid != null ? grid.WorldToTile(transform.position) : new Vector2Int(-999, -999);
+    /// <summary>Flat distance to the player (999 before he spawns). Used by the UI vignette and the heartbeat.</summary>
     public float DistanceToPlayer { get; private set; } = 999f;
     /// <summary>The spot being checked right now, or null.</summary>
     public HidingSpot CheckingSpot { get; private set; }
-    public int CurrentTilesPerTurn => Mathf.FloorToInt(Mathf.Min(tilesPerTurn, maxTilesPerTurn));
+    /// <summary>0..1 fill of the check bar.</summary>
+    public float CheckProgress { get; private set; }
+    /// <summary>Did he see the player go into the spot? (used by the UI and the music)</summary>
+    public bool LastHideWitnessed { get; private set; }
+    public string LastHideReason { get; private set; } = "none";
 
     GridManager grid;
     PlayerController player;
-    Vector2Int[] waypointTiles;
-    int waypointIndex = -1;
-    Vector2Int lastKnown;
+    Renderer[] renderers;
+    Light[] lights;
+    Transform armPivot;
+    float armAngle;
+
+    bool hunting;
+    readonly List<HidingSpot> queue = new List<HidingSpot>();
+    HidingSpot targetSpot;
     HidingSpot witnessedSpot;
-    float moveBudget;
-    int unseenTurns;
-    bool knewThisTurn;
-    readonly List<(Vector2Int tile, HidingSpot spot)> searchQueue = new List<(Vector2Int, HidingSpot)>();
+    List<Vector2Int> path;
+    int pathIndex;
+    float checkTimer;
+    float searchSoundTimer;
+    float chaseLoseTimer;
+    float repathTimer;
+    Vector2Int lastSeenTile;
+    float stepAccum;
+    float nextHonk;
+    float nextBreath;
 
     void Awake() { Instance = this; }
 
@@ -92,238 +106,257 @@ public class KillerAI : MonoBehaviour
 
         // New random result every game start / Restart (seeded from the clock).
         Random.InitState(unchecked((int)System.DateTime.Now.Ticks));
-        Tile = PickSpawnTile();
-        transform.position = grid.TileCenter(Tile);
-        transform.rotation = Quaternion.Euler(0f, Random.Range(0, 4) * 90f, 0f);
 
-        int n = waypoints != null ? waypoints.Length : 0;
-        waypointTiles = new Vector2Int[n];
-        for (int i = 0; i < n; i++)
-            waypointTiles[i] = grid.NearestWalkable(grid.WorldToTile(waypoints[i].position));
+        renderers = GetComponentsInChildren<Renderer>(true);
+        lights = GetComponentsInChildren<Light>(true);
+        SetupArm();
 
-        CurrentState = State.Patrol;
-        PickNextWaypoint();
+        // Not in the level until the chase phase starts: invisible and parked under the map.
+        SetVisible(false);
+        transform.position = new Vector3(0f, -100f, 0f);
     }
 
     void Update()
     {
         if (player == null) return;
+        if (!hunting)
+        {
+            DistanceToPlayer = 999f;
+            return;
+        }
+
         Vector3 flat = player.transform.position - transform.position;
         flat.y = 0f;
         DistanceToPlayer = flat.magnitude;
-    }
 
-    static bool Playing => GameManager.Instance == null || GameManager.Instance.IsPlaying;
+        GameManager gm = GameManager.Instance;
+        if (gm == null || !gm.IsPlaying || gm.IsPaused) return;
+        float dt = Time.deltaTime;
 
-    // ------------------------------------------------------------------ the turn
+        // Seeing the player in the open always starts a chase.
+        bool sees = CanSeePlayer();
+        if (sees && CurrentState != State.Chase) EnterChase();
 
-    /// <summary>Runs one full killer turn (called by the GameManager).</summary>
-    public IEnumerator TakeTurn()
-    {
-        knewThisTurn = false;
-        Hear();
-        Look();
-        if (TryCatch()) yield break;
-
-        moveBudget += Mathf.Min(tilesPerTurn, maxTilesPerTurn);
-        int steps = Mathf.FloorToInt(moveBudget + 0.001f);
-        moveBudget -= steps;
-
-        int guard = 0;
-        while (steps > 0 && guard++ < 30 && Playing)
-        {
-            if (!GetTarget(out Vector2Int target, out HidingSpot spot)) break;
-
-            if (Tile == target)
-            {
-                if (spot != null)
-                {
-                    // Opening a hiding spot ends the move.
-                    yield return CheckSpot(spot);
-                    if (searchQueue.Count > 0) searchQueue.RemoveAt(0);
-                    break;
-                }
-                OnArrived();
-                continue;
-            }
-
-            List<Vector2Int> path = grid.FindPath(Tile, target);
-            if (path == null || path.Count == 0)
-            {
-                OnArrived(); // unreachable target: skip it
-                continue;
-            }
-
-            // Walking into the player = caught.
-            if (path[0] == player.Tile && !player.IsHidden)
-            {
-                Catch();
-                yield break;
-            }
-
-            yield return StepTo(path[0]);
-            Tile = path[0];
-            steps--;
-
-            Look();
-            if (TryCatch()) yield break;
-        }
-
-        // Lost track of the player during a chase?
-        if (CurrentState == State.Chase && !knewThisTurn)
-        {
-            unseenTurns++;
-            if (unseenTurns >= chaseLostTurns) StartSearch();
-        }
-    }
-
-    void Look()
-    {
-        if (!CanSeePlayer()) return;
-        lastKnown = player.Tile;
-        knewThisTurn = true;
-        unseenTurns = 0;
-        if (CurrentState != State.Chase)
-        {
-            SetState(State.Chase);
-            AudioManager.Play(AudioManager.Sfx.DangerSting); // spotted!
-        }
-    }
-
-    void Hear()
-    {
-        if (player == null || !player.DashedLastTurn || player.IsHidden) return;
-        if (Vector2Int.Distance(Tile, player.Tile) > hearDashTiles) return;
-        lastKnown = player.Tile;
-        knewThisTurn = true;
-        unseenTurns = 0;
-        if (CurrentState != State.Chase) SetState(State.Chase);
-    }
-
-    bool TryCatch()
-    {
-        if (player == null || player.IsHidden) return false;
-        if (GridManager.Chebyshev(Tile, player.Tile) > 1 || !CanSeePlayer()) return false;
-        Catch();
-        return true;
-    }
-
-    void Catch()
-    {
-        FaceTowards(player.transform.position);
-        if (GameManager.Instance) GameManager.Instance.Lose("The clown caught you.");
-    }
-
-    bool GetTarget(out Vector2Int target, out HidingSpot spot)
-    {
-        spot = null;
-        target = Tile;
         switch (CurrentState)
         {
-            case State.Chase:
-                target = lastKnown;
-                return true;
-            case State.Search:
-                if (searchQueue.Count == 0)
-                {
-                    SetState(State.Patrol);
-                    return GetTarget(out target, out spot);
-                }
-                target = searchQueue[0].tile;
-                spot = searchQueue[0].spot;
-                return true;
-            default:
-                if (waypointTiles.Length == 0) return false;
-                target = waypointTiles[waypointIndex];
-                return true;
+            case State.Search: UpdateSearch(dt); break;
+            case State.Check: UpdateCheck(dt); break;
+            case State.Chase: UpdateChase(dt, sees); break;
         }
+
+        UpdateArm(dt);
+        UpdateIdleSounds();
     }
 
-    void OnArrived()
+    // ------------------------------------------------------------------ hunt start
+
+    /// <summary>Called by the GameManager when the chase phase starts.</summary>
+    public void BeginHunt()
     {
-        switch (CurrentState)
+        if (hunting || grid == null || player == null) return;
+        hunting = true;
+
+        Vector2Int spawn = PickSpawnTile(player.Tile);
+        transform.position = grid.TileCenter(spawn);
+        transform.rotation = Quaternion.Euler(0f, Random.Range(0, 4) * 90f, 0f);
+        SetVisible(true);
+
+        // Every hiding spot once, in random order.
+        queue.Clear();
+        foreach (HidingSpot s in HidingSpot.All) if (s.enterPoint != null) queue.Add(s);
+        for (int i = queue.Count - 1; i > 0; i--)
         {
-            case State.Patrol:
-                PickNextWaypoint();
-                break;
-            case State.Chase:
-                // Reached the last known tile and the player is not in sight.
-                if (!CanSeePlayer()) StartSearch();
-                break;
-            case State.Search:
-                if (searchQueue.Count > 0) searchQueue.RemoveAt(0);
-                break;
+            int j = Random.Range(0, i + 1);
+            (queue[i], queue[j]) = (queue[j], queue[i]);
         }
+
+        nextHonk = Time.time + Random.Range(honkInterval.x, honkInterval.y);
+        nextBreath = Time.time + Random.Range(breathInterval.x, breathInterval.y);
+        AudioManager.Play(AudioManager.Sfx.KillerSpawn);
+        Debug.Log($"[Killer] Spawned on tile {spawn}; {queue.Count} hiding spots to check in random order.");
+        GoToNextSpot();
     }
 
-    void SetState(State s)
+    // ------------------------------------------------------------------ search / check
+
+    Vector2Int CurrentTile => grid.WorldToTile(transform.position);
+
+    /// <summary>Picks the next unchecked spot and a path to it. Spots he cannot reach are skipped.</summary>
+    void GoToNextSpot()
     {
-        CurrentState = s;
         CheckingSpot = null;
-        if (s == State.Patrol) PickNextWaypoint();
+        CheckProgress = 0f;
+        targetSpot = null;
+        path = null;
+        pathIndex = 0;
+        CurrentState = State.Search;
+
+        while (queue.Count > 0)
+        {
+            HidingSpot s = queue[0];
+            queue.RemoveAt(0);
+            if (s == null || (s.IsChecked && s != witnessedSpot)) continue; // never the same spot twice
+
+            List<Vector2Int> p = grid.FindPath(CurrentTile, s.Tile);
+            if (p == null) continue; // unreachable
+            targetSpot = s;
+            path = p;
+            return;
+        }
+        // No spot left: he just stands there until the timer ends.
     }
 
-    void StartSearch()
+    void UpdateSearch(float dt)
     {
-        SetState(State.Search);
-        searchQueue.Clear();
-        searchQueue.Add((lastKnown, null));
-
-        var spots = new List<HidingSpot>();
-        foreach (HidingSpot s in HidingSpot.All)
-            if (Vector2Int.Distance(s.Tile, lastKnown) <= searchRadiusTiles) spots.Add(s);
-        spots.Sort((a, b) => SpotScore(a).CompareTo(SpotScore(b)));
-
-        for (int i = 0; i < Mathf.Min(spotsToCheck, spots.Count); i++)
-            searchQueue.Add((spots[i].Tile, spots[i]));
+        if (targetSpot == null || path == null) return;
+        if (Follow(walkSpeed, dt)) ArriveAtSpot();
     }
 
-    float SpotScore(HidingSpot spot)
+    void ArriveAtSpot()
     {
-        float score = Vector2Int.Distance(spot.Tile, lastKnown);
-        if (spot == witnessedSpot) score -= 1000f; // saw the player go in: check it first
-        return score;
+        CurrentState = State.Check;
+        CheckingSpot = targetSpot;
+        checkTimer = 0f;
+        CheckProgress = 0f;
+        searchSoundTimer = 0f;
+        FaceTowards(targetSpot.transform.position);
     }
 
-    void PickNextWaypoint()
+    void UpdateCheck(float dt)
     {
-        if (waypointTiles == null || waypointTiles.Length == 0) return;
-        int next = Random.Range(0, waypointTiles.Length);
-        if (waypointTiles.Length > 1 && next == waypointIndex) next = (next + 1) % waypointTiles.Length;
-        waypointIndex = next;
+        if (CheckingSpot == null)
+        {
+            GoToNextSpot();
+            return;
+        }
+        checkTimer += dt;
+        CheckProgress = Mathf.Clamp01(checkTimer / checkTime);
+
+        // Rummaging / creaking sound while the bar fills.
+        searchSoundTimer -= dt;
+        if (searchSoundTimer <= 0f)
+        {
+            AudioManager.PlayAt(AudioManager.Sfx.KillerSearch, transform.position);
+            searchSoundTimer = 0.95f;
+        }
+
+        if (checkTimer >= checkTime) FinishCheck();
     }
 
-    IEnumerator CheckSpot(HidingSpot spot)
+    void FinishCheck()
     {
-        CheckingSpot = spot;
-        FaceTowards(spot.transform.position);
-        yield return new WaitForSeconds(checkDelay);
+        HidingSpot spot = CheckingSpot;
+        spot.MarkChecked();
+        if (spot == witnessedSpot) witnessedSpot = null;
         CheckingSpot = null;
+        CheckProgress = 0f;
 
-        if (spot.isOccupied && Random.value < spot.findChance)
+        if (spot.isOccupied)
         {
             if (GameManager.Instance) GameManager.Instance.Lose("The clown found your hiding spot.");
-            yield break;
+            return;
         }
-        if (spot == witnessedSpot) witnessedSpot = null;
+        GoToNextSpot();
     }
 
-    IEnumerator StepTo(Vector2Int t)
-    {
-        Vector3 start = transform.position;
-        Vector3 end = grid.TileCenter(t);
-        Quaternion startRot = transform.rotation;
-        Vector3 dir = end - start;
-        dir.y = 0f;
-        Quaternion endRot = dir.sqrMagnitude > 0.001f ? Quaternion.LookRotation(dir) : startRot;
+    // ------------------------------------------------------------------ chase (he sees the player in the open)
 
-        for (float k = 0f; k < 1f; k += Time.deltaTime / stepTime)
+    void EnterChase()
+    {
+        // Remember the spot he was heading to / checking: it still has to be checked later.
+        HidingSpot interrupted = CheckingSpot != null ? CheckingSpot : targetSpot;
+        if (interrupted != null && (!interrupted.IsChecked || interrupted == witnessedSpot)) queue.Insert(0, interrupted);
+        targetSpot = null;
+        CheckingSpot = null;
+        CheckProgress = 0f;
+
+        CurrentState = State.Chase;
+        chaseLoseTimer = loseSightTime;
+        repathTimer = 0f;
+        path = null;
+        lastSeenTile = player.Tile;
+        AudioManager.Play(AudioManager.Sfx.DangerSting); // spotted!
+        AudioManager.PlayAt(AudioManager.Sfx.KillerHonk, transform.position);
+    }
+
+    void UpdateChase(float dt, bool sees)
+    {
+        if (sees)
         {
-            float s = Mathf.SmoothStep(0f, 1f, k);
-            transform.SetPositionAndRotation(Vector3.Lerp(start, end, s), Quaternion.Slerp(startRot, endRot, Mathf.Min(1f, k * 2f)));
-            yield return null;
+            chaseLoseTimer = loseSightTime;
+            lastSeenTile = player.Tile;
         }
-        transform.SetPositionAndRotation(end, endRot);
+        else chaseLoseTimer -= dt;
+
+        // He saw the player go into a spot: no need to wait, go and open it.
+        bool sawHide = !sees && witnessedSpot != null && player.IsHidden;
+        if (chaseLoseTimer <= 0f || sawHide)
+        {
+            GoToNextSpot(); // lost the player: back to checking spots
+            return;
+        }
+
+        repathTimer -= dt;
+        if (repathTimer <= 0f || path == null)
+        {
+            repathTimer = 0.3f;
+            path = grid.FindPath(CurrentTile, lastSeenTile);
+            pathIndex = 0;
+        }
+        if (path != null) Follow(chaseSpeed, dt);
+
+        Vector3 flat = player.transform.position - transform.position;
+        flat.y = 0f;
+        if (sees && !player.IsHidden && flat.magnitude < catchDistance)
+        {
+            FaceTowards(player.transform.position);
+            if (GameManager.Instance) GameManager.Instance.Lose("The clown caught you.");
+        }
+    }
+
+    // ------------------------------------------------------------------ movement helpers
+
+    /// <summary>Walks along the path. Returns true when the end of the path is reached.</summary>
+    bool Follow(float speed, float dt)
+    {
+        if (path == null) return true;
+        float move = speed * dt;
+        Vector3 before = transform.position;
+
+        while (move > 0f && pathIndex < path.Count)
+        {
+            Vector3 target = grid.TileCenter(path[pathIndex]);
+            target.y = transform.position.y;
+            Vector3 to = target - transform.position;
+            to.y = 0f;
+            float d = to.magnitude;
+            if (d > 0.001f)
+            {
+                Quaternion want = Quaternion.LookRotation(to);
+                transform.rotation = Quaternion.RotateTowards(transform.rotation, want, 540f * dt);
+            }
+            if (d <= move)
+            {
+                transform.position = target;
+                move -= d;
+                pathIndex++;
+            }
+            else
+            {
+                transform.position += to / d * move;
+                move = 0f;
+            }
+        }
+
+        // Heavy footsteps.
+        stepAccum += Vector3.Distance(before, transform.position);
+        if (stepAccum >= stepStride)
+        {
+            stepAccum = 0f;
+            AudioManager.PlayAt(AudioManager.Sfx.KillerStep, transform.position);
+        }
+
+        return pathIndex >= path.Count;
     }
 
     void FaceTowards(Vector3 p)
@@ -333,12 +366,64 @@ public class KillerAI : MonoBehaviour
         if (look.sqrMagnitude > 0.01f) transform.rotation = Quaternion.LookRotation(look);
     }
 
+    void UpdateIdleSounds()
+    {
+        float now = Time.time;
+        if (now >= nextHonk)
+        {
+            nextHonk = now + Random.Range(honkInterval.x, honkInterval.y);
+            if (CurrentState != State.Chase) AudioManager.PlayAt(AudioManager.Sfx.KillerHonk, transform.position);
+        }
+        if (now >= nextBreath)
+        {
+            nextBreath = now + Random.Range(breathInterval.x, breathInterval.y);
+            if (DistanceToPlayer < breathDistance) AudioManager.PlayAt(AudioManager.Sfx.KillerBreath, transform.position);
+        }
+    }
+
+    // ------------------------------------------------------------------ model: visibility + raised hand
+
+    void SetVisible(bool visible)
+    {
+        if (renderers != null) foreach (Renderer r in renderers) if (r) r.enabled = visible;
+        if (lights != null) foreach (Light l in lights) if (l) l.enabled = visible;
+    }
+
+    /// <summary>Puts the right arm and glove under a shoulder pivot so the hand can be raised.</summary>
+    void SetupArm()
+    {
+        Transform visual = transform.Find("Visual");
+        if (visual == null) return;
+        Transform arm = visual.Find("ArmR");
+        if (arm == null) return;
+        Transform glove = visual.Find("GloveR");
+
+        var pivot = new GameObject("ArmRPivot").transform;
+        pivot.SetParent(visual, false);
+        pivot.localPosition = new Vector3(0.6f, 2.0f, 0.02f); // shoulder
+        pivot.localRotation = Quaternion.identity;
+        arm.SetParent(pivot, true);
+        if (glove != null) glove.SetParent(pivot, true);
+        armPivot = pivot;
+    }
+
+    void UpdateArm(float dt)
+    {
+        if (armPivot == null) return;
+        bool raised = CurrentState == State.Check;
+        float target = raised ? -raiseAngle : 0f;
+        armAngle = Mathf.MoveTowards(armAngle, target, 420f * dt);
+        // Small searching wobble once the hand is up.
+        float wobble = raised && Mathf.Abs(armAngle - target) < 1f ? Mathf.Sin(Time.time * 10f) * 9f : 0f;
+        armPivot.localRotation = Quaternion.Euler(armAngle + wobble, 0f, 0f);
+    }
+
     // ------------------------------------------------------------------ senses / rules
 
-    /// <summary>True if the player is visible inside the vision cone with a clear line of sight.</summary>
+    /// <summary>True if the player is out in the open, inside the vision cone, with a clear line of sight.</summary>
     public bool CanSeePlayer()
     {
-        if (player == null || player.IsHidden) return false;
+        if (!hunting || player == null || player.IsHidden || grid == null) return false;
 
         Vector3 eye = transform.position + Vector3.up * eyeHeight;
         Vector3 target = grid.TileCenter(player.Tile) + Vector3.up * 1.5f;
@@ -357,86 +442,76 @@ public class KillerAI : MonoBehaviour
         return true;
     }
 
-    /// <summary>Old entry point: uses the player's current tile as the tile they hid from.</summary>
-    public float GetFindChanceFor(HidingSpot spot) => GetFindChanceFor(spot, player != null ? player.Tile : spot.Tile);
-
     /// <summary>
-    /// Called by the player when they hide (fromTile = where they stood). Returns how likely the killer is
-    /// to find them there. Only a WITNESSED hide can be found; otherwise blindFindChance (default 0).
+    /// Called by the player when they start hiding (fromTile = where they stood).
+    /// If the killer is hunting and saw them go in, he goes straight to that spot, even if it was checked before.
     /// </summary>
-    public float GetFindChanceFor(HidingSpot spot, Vector2Int fromTile)
+    public void NotifyPlayerHid(HidingSpot spot, Vector2Int fromTile)
     {
+        LastHideWitnessed = false;
+        LastHideReason = "none";
+        if (!hunting || spot == null || grid == null) return;
+
         string reason = WitnessReason(fromTile) ?? WitnessReason(spot.Tile);
         LastHideWitnessed = reason != null;
         LastHideReason = reason ?? "none";
         Debug.Log($"Hide witnessed: {LastHideWitnessed.ToString().ToLower()}, reason: {LastHideReason}, killer tile {Tile}, player tile {fromTile} (spot {spot.name} tile {spot.Tile})");
+        if (reason == null) return;
 
-        if (LastHideWitnessed)
-        {
-            // Saw the player go in: walk there, then open that spot first.
-            witnessedSpot = spot;
-            lastKnown = spot.Tile;
-            unseenTurns = 0;
-            if (CurrentState != State.Chase)
-            {
-                SetState(State.Chase);
-                AudioManager.Play(AudioManager.Sfx.DangerSting);
-            }
-            return seenFindChance;
-        }
-        // Not witnessed: the killer may still search around (and open spots), but cannot find the player.
-        return blindFindChance;
+        witnessedSpot = spot;
+        queue.Remove(spot);
+        if (CurrentState == State.Search && targetSpot != null && targetSpot != spot) queue.Insert(0, targetSpot);
+        queue.Insert(0, spot);
+        // Busy checking another spot: he finishes that first. Otherwise he turns around now.
+        if (CurrentState == State.Search || CurrentState == State.Chase) GoToNextSpot();
     }
 
     /// <summary>
-    /// Why the killer notices the player on tile t, or null if it does not:
+    /// Why the killer notices the player on tile t, or null if he does not:
     /// "line of sight" = tile line of sight inside the vision range and cone,
-    /// "same room nearby" = same room, within sameRoomTiles, nothing big in between (even from behind).
+    /// "same room nearby" = same room, within sameRoomTiles (even from behind).
     /// </summary>
     string WitnessReason(Vector2Int t)
     {
         if (grid == null) return null;
-        float d = Vector2Int.Distance(Tile, t);
-        bool los = grid.LineOfSight(Tile, t);
-        if (!los) return null;
+        Vector2Int me = Tile;
+        float d = Vector2Int.Distance(me, t);
+        if (!grid.LineOfSight(me, t)) return null;
 
         if (d <= viewDistance / grid.tileSize)
         {
-            Vector3 dir = grid.TileCenter(t) - grid.TileCenter(Tile);
+            Vector3 dir = grid.TileCenter(t) - grid.TileCenter(me);
             dir.y = 0f;
             if (d <= 1.01f || Vector3.Angle(transform.forward, dir) <= viewAngle * 0.5f) return "line of sight";
         }
 
         int room = grid.RoomOf(t);
-        if (d <= sameRoomTiles && room >= 0 && room == grid.RoomOf(Tile)) return "same room nearby";
+        if (d <= sameRoomTiles && room >= 0 && room == grid.RoomOf(me)) return "same room nearby";
         return null;
     }
 
     // ------------------------------------------------------------------ random spawn
 
     /// <summary>
-    /// Random free, reachable tile that is not a hiding-spot / player-spawn tile,
-    /// at least minSpawnDistance path tiles from the player, and (if spawnSafetyChecks) not in the
-    /// player's starting room and not in the player's line of sight.
+    /// Random free, reachable tile that is not a hiding-spot / exit tile, at least minSpawnDistance path tiles
+    /// from the player, and (if spawnSafetyChecks) not in the player's room and not in the player's line of sight.
     /// </summary>
-    Vector2Int PickSpawnTile()
+    Vector2Int PickSpawnTile(Vector2Int start)
     {
-        Vector2Int start = grid.NearestWalkable(grid.WorldToTile(player != null ? player.transform.position : Vector3.zero));
-
-        // Path distance (tiles) from the player's spawn.
+        // Path distance (tiles) from the player.
         var dist = new Dictionary<Vector2Int, int> { { start, 0 } };
-        var queue = new Queue<Vector2Int>();
-        queue.Enqueue(start);
+        var queueTiles = new Queue<Vector2Int>();
+        queueTiles.Enqueue(start);
         Vector2Int[] dirs = { Vector2Int.up, Vector2Int.right, Vector2Int.down, Vector2Int.left };
-        while (queue.Count > 0)
+        while (queueTiles.Count > 0)
         {
-            Vector2Int c = queue.Dequeue();
+            Vector2Int c = queueTiles.Dequeue();
             foreach (Vector2Int d in dirs)
             {
                 Vector2Int n = c + d;
                 if (dist.ContainsKey(n) || !grid.CanStep(c, n)) continue;
                 dist[n] = dist[c] + 1;
-                queue.Enqueue(n);
+                queueTiles.Enqueue(n);
             }
         }
 
@@ -448,6 +523,13 @@ public class KillerAI : MonoBehaviour
             excluded.Add(st);
             foreach (Vector2Int d in dirs) excluded.Add(st + d); // spot tiles can shift by one when claimed
         }
+        foreach (ExitDoor e in ExitDoor.All)
+            foreach (Vector2Int t in dist.Keys)
+            {
+                Vector3 off = grid.TileCenter(t) - e.transform.position;
+                off.y = 0f;
+                if (off.magnitude < grid.tileSize * 1.5f) excluded.Add(t);
+            }
 
         int startRoom = grid.RoomOf(start);
         var safe = new List<Vector2Int>();
@@ -462,26 +544,9 @@ public class KillerAI : MonoBehaviour
         }
 
         List<Vector2Int> pool = safe.Count > 0 ? safe : anyFree;
-        // Shuffle, then take the first tile the NavMesh can also reach.
-        for (int i = pool.Count - 1; i > 0; i--)
-        {
-            int j = Random.Range(0, i + 1);
-            (pool[i], pool[j]) = (pool[j], pool[i]);
-        }
-        Vector3 from = grid.TileCenter(start);
-        var path = new UnityEngine.AI.NavMeshPath();
-        foreach (Vector2Int t in pool)
-        {
-            if (UnityEngine.AI.NavMesh.CalculatePath(from, grid.TileCenter(t), UnityEngine.AI.NavMesh.AllAreas, path)
-                && path.status == UnityEngine.AI.NavMeshPathStatus.PathComplete)
-            {
-                Debug.Log($"[Killer] Spawn tile {t} (world {grid.TileCenter(t)}), path distance {dist[t]} from player spawn {start}, safe candidates {safe.Count}");
-                return t;
-            }
-        }
-        Vector2Int fallback = pool.Count > 0 ? pool[0] : grid.NearestWalkable(grid.WorldToTile(transform.position));
-        Debug.Log($"[Killer] Spawn tile {fallback} (fallback, NavMesh check failed)");
-        return fallback;
+        if (pool.Count == 0) return grid.NearestWalkable(start);
+        Vector2Int pick = pool[Random.Range(0, pool.Count)];
+        Debug.Log($"[Killer] Spawn tile {pick}, path distance {dist[pick]} from the player, safe candidates {safe.Count}");
+        return pick;
     }
-
 }
