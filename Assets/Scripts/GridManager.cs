@@ -118,7 +118,7 @@ public class GridManager : MonoBehaviour
     readonly HashSet<Vector2Int> claimed = new HashSet<Vector2Int>();
 
     /// <summary>
-    /// Reserves the closest free walkable tile for a key or hiding spot, so each one gets its own tile.
+    /// Reserves the closest free walkable tile for a hiding spot, so each one gets its own tile.
     /// </summary>
     public Vector2Int ClaimNearest(Vector3 worldPos, int maxRadius = 6)
     {
@@ -147,7 +147,7 @@ public class GridManager : MonoBehaviour
         return best;
     }
 
-    /// <summary>True if a wall piece (Wall_* / ExitDoor*) lies on the straight line between two points (at 0.9 m).</summary>
+    /// <summary>True if a wall piece (Wall_*) lies on the straight line between two points (at 0.9 m).</summary>
     public bool WallBetweenPoints(Vector3 a, Vector3 b)
     {
         a.y = 0.9f;
@@ -239,8 +239,8 @@ public class GridManager : MonoBehaviour
         BuildRooms();
     }
 
-    /// <summary>True for wall pieces and the exit door (they sit on tile lines, not on tiles).</summary>
-    public static bool IsWall(Collider col) => col.name.StartsWith("Wall_") || col.name.StartsWith("ExitDoor");
+    /// <summary>True for wall pieces (they sit on tile lines, not on tiles).</summary>
+    public static bool IsWall(Collider col) => col.name.StartsWith("Wall_");
 
     // ------------------------------------------------------------------ rooms + line of sight
 

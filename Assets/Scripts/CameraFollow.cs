@@ -22,9 +22,11 @@ public class CameraFollow : MonoBehaviour
     [Tooltip("Degrees per pixel of mouse movement.")]
     public float rotationSpeed = 0.2f;
     [Tooltip("Max degrees left/right from the start angle.")]
-    public float maxYawOffset = 30f;
-    [Tooltip("Max degrees up/down from the start angle.")]
-    public float maxPitchOffset = 15f;
+    public float maxYaw = 50f;
+    [Tooltip("Max degrees the camera can go DOWN (lower, more horizontal view) from the start angle.")]
+    public float maxPitchDown = 20f;
+    [Tooltip("Max degrees the camera can go UP (higher, more top-down view) from the start angle.")]
+    public float maxPitchUp = 15f;
 
     [Header("Zoom (mouse wheel)")]
     [Tooltip("Distance change per wheel notch.")]
@@ -66,8 +68,8 @@ public class CameraFollow : MonoBehaviour
                 Vector2 delta = mouse.delta.ReadValue();
                 yaw += delta.x * rotationSpeed;
                 pitch -= delta.y * rotationSpeed;
-                yaw = Mathf.Clamp(yaw, baseYaw - maxYawOffset, baseYaw + maxYawOffset);
-                pitch = Mathf.Clamp(pitch, basePitch - maxPitchOffset, basePitch + maxPitchOffset);
+                yaw = Mathf.Clamp(yaw, baseYaw - maxYaw, baseYaw + maxYaw);
+                pitch = Mathf.Clamp(pitch, basePitch - maxPitchDown, basePitch + maxPitchUp);
             }
 
             // Zoom with the wheel; only the sign is used, so every mouse/OS behaves the same.

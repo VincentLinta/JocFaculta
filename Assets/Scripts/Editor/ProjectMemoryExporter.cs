@@ -6,7 +6,7 @@ using UnityEngine.SceneManagement;
 
 /// <summary>
 /// Tools > Hide And Seek > Export Project Memory Snapshot.
-/// Writes Assets/ProjectMemory/10_SCENE_SNAPSHOT.md from the open scene: root hierarchy, exits, keys,
+/// Writes Assets/ProjectMemory/10_SCENE_SNAPSHOT.md from the open scene: root hierarchy,
 /// hiding spots, waypoints and the main public field values. Read-only: it never changes the scene.
 /// </summary>
 public static class ProjectMemoryExporter
@@ -37,28 +37,6 @@ public static class ProjectMemoryExporter
         sb.AppendLine("```");
         sb.AppendLine();
 
-        sb.AppendLine("## Exits");
-        sb.AppendLine();
-        sb.AppendLine("| Name | Position |");
-        sb.AppendLine("|---|---|");
-        foreach (ExitDoor e in Object.FindObjectsByType<ExitDoor>()) sb.AppendLine($"| {e.name} | {V(e.transform.position)} |");
-        sb.AppendLine();
-
-        sb.AppendLine("## Keys (scene positions; at Play the KeyPlacer moves them to random fair tiles)");
-        sb.AppendLine();
-        sb.AppendLine("| Name | Position |");
-        sb.AppendLine("|---|---|");
-        foreach (KeyPickup k in Object.FindObjectsByType<KeyPickup>()) sb.AppendLine($"| {k.name} | {V(k.transform.position)} |");
-        KeyPlacer placer = Object.FindAnyObjectByType<KeyPlacer>();
-        if (placer)
-        {
-            sb.AppendLine();
-            sb.AppendLine($"KeyPlacer: randomizeKeys={placer.randomizeKeys}, minDistanceFromPlayerSpawn={placer.minDistanceFromPlayerSpawn}, " +
-                          $"minDistanceFromKillerSpawn={placer.minDistanceFromKillerSpawn}, minDistanceBetweenKeys={placer.minDistanceBetweenKeys}, " +
-                          $"requireDifferentRooms={placer.requireDifferentRooms}, originalPositions={string.Join(" ", placer.originalPositions.ConvertAll(V))}");
-        }
-        sb.AppendLine();
-
         sb.AppendLine("## Hiding spots");
         sb.AppendLine();
         sb.AppendLine("| Name | Type | Object position | Enter point (before tile snap) |");
@@ -84,15 +62,15 @@ public static class ProjectMemoryExporter
         sb.AppendLine();
         sb.AppendLine("```");
         Dump(sb, Object.FindAnyObjectByType<GridManager>(), "origin", "width", "height", "tileSize", "probeHalfSize", "propHalfSize");
-        Dump(sb, killer, "tilesPerTurn", "tilesPerKey", "maxTilesPerTurn", "stepTime", "viewDistance", "viewAngle", "hearDashTiles",
+        Dump(sb, killer, "tilesPerTurn", "maxTilesPerTurn", "stepTime", "viewDistance", "viewAngle", "hearDashTiles",
             "sameRoomTiles", "blindFindChance", "seenFindChance", "minSpawnDistance", "spawnSafetyChecks", "searchRadiusTiles", "spotsToCheck", "chaseLostTurns");
         Dump(sb, Object.FindAnyObjectByType<PlayerController>(), "normalRange", "dashRange", "stepTime", "maxStamina", "dashCost", "hiddenRegen");
         Dump(sb, Object.FindAnyObjectByType<AudioManager>(), "musicVolume", "sfxVolume", "pausedMusicLevel", "baseLayerLevel", "calmMusicLevel",
             "musicTempo", "musicRootNote", "musicClipOverride", "heartbeatFarTiles", "heartbeatMidTiles", "heartbeatMidVolume", "heartbeatNearTiles",
             "heartbeatNearVolume", "heartbeatCloseTiles", "heartbeatMinBpm", "heartbeatMaxBpm", "heartbeatHiddenBoost", "heartbeatLevel",
             "heartbeatDamping", "tensionLevel", "chaseMusicLevel", "creepLevel", "ambientLevel", "eventLevel");
-        Dump(sb, Object.FindAnyObjectByType<GameUI>(), "dangerDistance", "bannerTime", "exitHintTime");
-        Dump(sb, Object.FindAnyObjectByType<GameManager>(), "keysRequired", "killerTurnDelay");
+        Dump(sb, Object.FindAnyObjectByType<GameUI>(), "dangerDistance");
+        Dump(sb, Object.FindAnyObjectByType<GameManager>(), "killerTurnDelay");
         Dump(sb, Object.FindAnyObjectByType<RuntimeNavMeshBaker>(), "size");
         RuntimeNavMeshBaker baker = Object.FindAnyObjectByType<RuntimeNavMeshBaker>();
         if (baker) sb.AppendLine($"RuntimeNavMeshBaker.position = {V(baker.transform.position)}");

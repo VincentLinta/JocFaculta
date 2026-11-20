@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Turn-based clown killer on the tile grid. Moves 2 tiles per turn (up to 3 after keys).
+/// Turn-based clown killer on the tile grid. Moves 2 tiles per turn.
 /// Patrol: walks between waypoints.
 /// Chase: sees the player (vision cone + line of sight) or hears a dash within a few tiles.
 /// Search: goes to the last known tile, then checks nearby hiding spots one by one.
@@ -16,8 +16,6 @@ public class KillerAI : MonoBehaviour
 
     [Header("Movement")]
     public float tilesPerTurn = 2f;
-    [Tooltip("Added after each key. Fractions add up over turns (2.34 = sometimes 3 tiles).")]
-    public float tilesPerKey = 0.34f;
     public float maxTilesPerTurn = 3f;
     [Tooltip("Seconds to walk one tile.")]
     public float stepTime = 0.28f;
@@ -417,7 +415,7 @@ public class KillerAI : MonoBehaviour
     // ------------------------------------------------------------------ random spawn
 
     /// <summary>
-    /// Random free, reachable tile that is not a key / exit / hiding-spot / player-spawn tile,
+    /// Random free, reachable tile that is not a hiding-spot / player-spawn tile,
     /// at least minSpawnDistance path tiles from the player, and (if spawnSafetyChecks) not in the
     /// player's starting room and not in the player's line of sight.
     /// </summary>
@@ -443,8 +441,6 @@ public class KillerAI : MonoBehaviour
         }
 
         var excluded = new HashSet<Vector2Int> { start };
-        foreach (KeyPickup k in FindObjectsByType<KeyPickup>())
-            excluded.Add(grid.NearestWalkable(grid.WorldToTile(k.transform.position)));
         foreach (HidingSpot s in HidingSpot.All)
         {
             if (s.enterPoint == null) continue;
@@ -452,13 +448,6 @@ public class KillerAI : MonoBehaviour
             excluded.Add(st);
             foreach (Vector2Int d in dirs) excluded.Add(st + d); // spot tiles can shift by one when claimed
         }
-        foreach (ExitDoor e in ExitDoor.All)
-            foreach (Vector2Int t in dist.Keys)
-            {
-                Vector3 off = grid.TileCenter(t) - e.transform.position;
-                off.y = 0f;
-                if (off.magnitude < grid.tileSize * 1.5f) excluded.Add(t);
-            }
 
         int startRoom = grid.RoomOf(start);
         var safe = new List<Vector2Int>();
@@ -495,9 +484,4 @@ public class KillerAI : MonoBehaviour
         return fallback;
     }
 
-    /// <summary>Called by the GameManager after each key.</summary>
-    public void AddSpeedBonus()
-    {
-        tilesPerTurn = Mathf.Min(maxTilesPerTurn, tilesPerTurn + tilesPerKey);
-    }
 }

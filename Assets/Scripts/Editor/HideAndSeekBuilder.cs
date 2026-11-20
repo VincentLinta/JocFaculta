@@ -17,7 +17,6 @@ public static class HideAndSeekBuilder
     const float WallH = 2.6f;
     const float WallT = 0.3f;
     const float Door = 2f; // exactly one 2x2 tile
-    const float WestExitZ = 7f; // second exit (Storage, west wall), opposite the east exit (z = -13)
     const int IgnoreRaycastLayer = 2;
 
     static readonly Color Warm = new Color(1f, 0.68f, 0.4f);
@@ -25,7 +24,7 @@ public static class HideAndSeekBuilder
     static Material mFloor, mOutside, mWall, mWood, mDarkWood, mMetal, mRust, mFabric, mCloth, mTile;
     static Material mConcrete, mDarkConcrete, mWoodFloor, mTileFloor, mBaseboard, mRug, mPuddle, mStain, mCobweb;
     static Material mCardboard, mShade, mBulb, mEmergency, mGlass, mTrash;
-    static Material mPlayer, mKiller, mMask, mKey, mExit, mSign;
+    static Material mPlayer, mKiller, mMask;
     static Material mSuitA, mSuitB, mClownFace, mClownRed, mClownNose, mClownBlue, mShoe, mGlove;
     static Material mGridLine, mTileReach, mTileHover, mTilePath, mSpotOutline;
 
@@ -54,16 +53,11 @@ public static class HideAndSeekBuilder
         BuildNorthWing(map);
         BuildLights(lights);
 
-        // Player spawn in the safe room (west), exit on the far east side. Tile centers end in .5
+        // Player spawn in the safe room (west). Tile centers end in .5
         var spawn = new GameObject("PlayerSpawn");
         spawn.transform.SetParent(map, false);
         spawn.transform.localPosition = new Vector3(-25.5f, 1f, -1.5f);
 
-        GameObject exit = Box("ExitDoor", structure, new Vector3(30f, 1.2f, -13f), new Vector3(0.3f, 2.4f, Door), mExit);
-        Box("ExitSign", structure, new Vector3(29.75f, 2.45f, -13f), new Vector3(0.1f, 0.25f, 1.2f), mSign, false);
-        Light exitLight = PointLight("ExitLight", lights, new Vector3(28.6f, 2.2f, -13f), new Color(1f, 0.15f, 0.1f), 6f, 7f);
-        exit.AddComponent<ExitDoor>().doorLight = exitLight;
-        BuildWestExit(structure, lights);
 
         SetupAtmosphere();
         Save("Phase 1 - Map");
@@ -75,11 +69,11 @@ public static class HideAndSeekBuilder
     /// </summary>
     static void BuildWalls(Transform structure)
     {
-        // Outer walls. East wall has the exit gap at z = -13 (tile -14..-12).
+        // Outer walls (closed, no gaps).
         WallX(structure, "Wall_North", 20f, -30.15f, 30.15f, NorthDoorsX); // doorways into the north wing
         WallX(structure, "Wall_South", -20f, -30.15f, 30.15f);
-        WallZ(structure, "Wall_West", -30f, -20f, 20f, WestExitZ); // second exit (Storage, NW)
-        WallZ(structure, "Wall_East", 30f, -20f, 20f, -13f);
+        WallZ(structure, "Wall_West", -30f, -20f, 20f);
+        WallZ(structure, "Wall_East", 30f, -20f, 20f);
 
         // North row: Storage | Office | Bedroom | Bathroom, corridor below.
         WallX(structure, "Wall_CorridorNorth", 6f, -30f, 30f, -23f, -7f, 7f, 23f);
@@ -96,7 +90,7 @@ public static class HideAndSeekBuilder
     }
 
     /// <summary>
-    /// Upgrade for an existing scene: re-lays only the walls, baseboards and exit on the tile lines
+    /// Upgrade for an existing scene: re-lays only the walls and baseboards on the tile lines
     /// and nudges the few props / hiding spot that touched the moved walls. Nothing else is rebuilt.
     /// </summary>
     public static void AlignWallsToGrid()
@@ -111,13 +105,6 @@ public static class HideAndSeekBuilder
         DestroyChild(map, "Trim");
         BuildTrim(Child(map, "Trim"), structure);
 
-        Transform exit = structure.Find("ExitDoor");
-        exit.localPosition = new Vector3(30f, 1.2f, -13f);
-        exit.localScale = new Vector3(0.3f, 2.4f, Door);
-        structure.Find("ExitSign").localPosition = new Vector3(29.75f, 2.45f, -13f);
-        Transform exitLight = map.Find("Lights/ExitLight");
-        if (exitLight) exitLight.localPosition = new Vector3(28.6f, 2.2f, -13f);
-
         // Props that touched the walls moved from x = -15 / 15 to x = -14 / 14.
         MoveProp(map, "FileCabinet", new Vector2(-14.5f, 19.2f), new Vector2(-13.5f, 19.2f));
         MoveProp(map, "Cobweb", new Vector2(-15.2f, 19.8f), new Vector2(-14.2f, 19.8f));
@@ -131,53 +118,6 @@ public static class HideAndSeekBuilder
         MoveProp(map, "Mirror_Broken", new Vector2(15.18f, 16.2f), new Vector2(14.18f, 16.2f));
         GameObject hs7 = GameObject.Find("HidingSpots/HidingSpot_07");
         if (hs7) hs7.transform.position = new Vector3(13.45f, 0f, 12f);
-    }
-
-    /// <summary>Second exit in the west wall: same door, sign and red/green light as the east exit.</summary>
-    static void BuildWestExit(Transform structure, Transform lights)
-    {
-        GameObject door = Box("ExitDoor_West", structure, new Vector3(-30f, 1.2f, WestExitZ), new Vector3(0.3f, 2.4f, Door), mExit);
-        Box("ExitSign_West", structure, new Vector3(-29.75f, 2.45f, WestExitZ), new Vector3(0.1f, 0.25f, 1.2f), mSign, false);
-        Light l = PointLight("ExitLight_West", lights, new Vector3(-28.6f, 2.2f, WestExitZ), new Color(1f, 0.15f, 0.1f), 6f, 7f);
-        door.AddComponent<ExitDoor>().doorLight = l;
-    }
-
-    /// <summary>
-    /// Upgrade for an existing scene: cuts one tile-wide gap in the west wall and adds the second exit.
-    /// Only the west wall pieces and their baseboards are replaced; nothing else moves.
-    /// </summary>
-    public static void AddSecondExit()
-    {
-        LoadMaterials();
-        Transform structure = GameObject.Find("Map/Structure").transform;
-        Transform map = structure.parent;
-        Transform lights = map.Find("Lights");
-        // Remove an older second exit first, so this can be re-run safely.
-        DestroyChild(structure, "ExitDoor_West");
-        DestroyChild(structure, "ExitSign_West");
-        if (lights) DestroyChild(lights, "ExitLight_West");
-
-        for (int i = structure.childCount - 1; i >= 0; i--)
-            if (structure.GetChild(i).name.StartsWith("Wall_West")) Object.DestroyImmediate(structure.GetChild(i).gameObject);
-        WallZ(structure, "Wall_West", -30f, -20f, 20f, WestExitZ);
-
-        // Replace only the west wall baseboard(s).
-        Transform trim = map.Find("Trim");
-        if (trim)
-        {
-            for (int i = trim.childCount - 1; i >= 0; i--)
-            {
-                Transform b = trim.GetChild(i);
-                if (Mathf.Abs(b.position.x + 30f) < 0.01f && b.localScale.z > b.localScale.x) Object.DestroyImmediate(b.gameObject);
-            }
-            foreach (Transform w in structure)
-            {
-                if (!w.name.StartsWith("Wall_West")) continue;
-                Vector3 s = w.localScale;
-                Box("Baseboard", trim, new Vector3(w.localPosition.x, 0.08f, w.localPosition.z), new Vector3(s.x + 0.06f, 0.16f, s.z), mBaseboard, false);
-            }
-        }
-        BuildWestExit(structure, lights);
     }
 
     // ======================================================================
@@ -367,16 +307,40 @@ public static class HideAndSeekBuilder
         return $"waypoints={list.Count} spots={spots.childCount} grid={grid.width}x{grid.height}";
     }
 
-    /// <summary>Upgrade for the existing scene: adds the random key placer to the Keys root.</summary>
-    public static string AddKeyPlacer()
+    /// <summary>
+    /// Upgrade for an existing scene: deletes the keys, the exit doors / signs / lights and closes the
+    /// two gaps they left in the outer walls (walls and baseboards are re-laid).
+    /// </summary>
+    [MenuItem("Tools/Hide And Seek/Remove Keys And Exits (existing scene)")]
+    public static void RemoveKeysAndExits()
     {
-        GameObject keys = GameObject.Find("Keys");
-        var placer = keys.GetComponent<KeyPlacer>();
-        if (!placer) placer = keys.AddComponent<KeyPlacer>();
-        placer.originalPositions.Clear();
-        foreach (Transform k in keys.transform) placer.originalPositions.Add(k.position);
-        EditorUtility.SetDirty(placer);
-        return "original key positions: " + string.Join(" ", placer.originalPositions);
+        LoadMaterials();
+        DestroyRoot("Keys");
+
+        GameObject structureGO = GameObject.Find("Map/Structure");
+        if (structureGO == null)
+        {
+            Debug.LogWarning("[Builder] Map/Structure not found - open the game scene first.");
+            return;
+        }
+        Transform structure = structureGO.transform;
+        Transform map = structure.parent;
+
+        for (int i = structure.childCount - 1; i >= 0; i--)
+        {
+            string n = structure.GetChild(i).name;
+            if (n.StartsWith("Wall_") || n.StartsWith("ExitDoor") || n.StartsWith("ExitSign"))
+                Object.DestroyImmediate(structure.GetChild(i).gameObject);
+        }
+        Transform lights = map.Find("Lights");
+        if (lights != null)
+            for (int i = lights.childCount - 1; i >= 0; i--)
+                if (lights.GetChild(i).name.StartsWith("ExitLight")) Object.DestroyImmediate(lights.GetChild(i).gameObject);
+
+        BuildWalls(structure);
+        DestroyChild(map, "Trim");
+        BuildTrim(Child(map, "Trim"), structure);
+        Save("Remove Keys And Exits");
     }
 
     static void MoveProp(Transform root, string name, Vector2 from, Vector2 to)
@@ -1305,16 +1269,7 @@ public static class HideAndSeekBuilder
         DestroyRoot("GameManager");
         DestroyRoot("GameUI");
 
-        // Keys sit on tile centers (.5).
-        Transform keys = new GameObject("Keys").transform;
-        Key(keys, "Key_1_Storage", new Vector3(-19.5f, 1f, 12.5f));
-        Key(keys, "Key_2_Bathroom", new Vector3(21.5f, 1f, 10.5f));
-        Key(keys, "Key_3_Boiler", new Vector3(-11.5f, 1f, -12.5f));
-        // Random fair key tiles every game (original positions above are kept for randomizeKeys = false).
-        var placer = keys.gameObject.AddComponent<KeyPlacer>();
-        foreach (Transform k in keys) placer.originalPositions.Add(k.position);
-
-        new GameObject("GameManager").AddComponent<GameManager>().keysRequired = 3;
+        new GameObject("GameManager").AddComponent<GameManager>();
         new GameObject("GameUI").AddComponent<GameUI>();
         DestroyRoot("AudioManager");
         new GameObject("AudioManager").AddComponent<AudioManager>();
@@ -1329,18 +1284,6 @@ public static class HideAndSeekBuilder
         }
 
         Save("Phase 5 - Game Loop");
-    }
-
-    static void Key(Transform parent, string name, Vector3 pos)
-    {
-        var key = new GameObject(name);
-        key.transform.SetParent(parent, false);
-        key.transform.position = pos;
-        Cyl("Ring", key.transform, new Vector3(0f, 0.15f, 0f), new Vector3(0.35f, 0.04f, 0.35f), mKey, new Vector3(90f, 0f, 0f), false);
-        Box("Shaft", key.transform, new Vector3(0f, -0.15f, 0f), new Vector3(0.08f, 0.4f, 0.08f), mKey, false);
-        Box("Tooth", key.transform, new Vector3(0.08f, -0.3f, 0f), new Vector3(0.12f, 0.06f, 0.06f), mKey, false);
-        PointLight("KeyGlow", key.transform, Vector3.zero, new Color(1f, 0.8f, 0.3f), 1.5f, 3f);
-        key.AddComponent<KeyPickup>();
     }
 
     [MenuItem("Tools/Hide And Seek/Build All Phases")]
@@ -1372,7 +1315,7 @@ public static class HideAndSeekBuilder
             for (int i = lights.childCount - 1; i >= 0; i--)
             {
                 Transform c = lights.GetChild(i);
-                if (c.name != "ExitLight") Object.DestroyImmediate(c.gameObject);
+                Object.DestroyImmediate(c.gameObject);
             }
             BuildLights(lights);
         }
@@ -1401,12 +1344,6 @@ public static class HideAndSeekBuilder
             if (agent) Object.DestroyImmediate(agent);
             killer.transform.position = new Vector3(8.5f, 0f, 13.5f);
         }
-
-        // Keys onto tile centers.
-        GameObject keys = GameObject.Find("Keys");
-        if (keys)
-            foreach (Transform k in keys.transform)
-                k.position = new Vector3(Mathf.Floor(k.position.x) + 0.5f, 1f, Mathf.Floor(k.position.z) + 0.5f);
 
         GameObject cam = GameObject.Find("Main Camera");
         if (cam && cam.GetComponent<CameraFollow>()) cam.GetComponent<CameraFollow>().SnapToTarget();
@@ -1583,9 +1520,6 @@ public static class HideAndSeekBuilder
         mPlayer = Mat("HS_Player", new Color(0.35f, 0.45f, 0.6f));
         mKiller = Mat("HS_Killer", new Color(0.02f, 0.02f, 0.02f));
         mMask = Mat("HS_Mask", new Color(0.92f, 0.92f, 0.88f), null, 0.3f);
-        mKey = Mat("HS_Key", new Color(0.9f, 0.7f, 0.2f), new Color(0.9f, 0.6f, 0.1f) * 1.5f, 0.7f);
-        mExit = Mat("HS_ExitDoor", new Color(0.15f, 0.2f, 0.15f), new Color(0.05f, 0.25f, 0.08f));
-        mSign = Mat("HS_ExitSign", new Color(0.8f, 0.1f, 0.1f), new Color(1f, 0.1f, 0.05f) * 2f);
 
         mSuitA = Mat("HS_ClownSuitA", new Color(0.3f, 0.03f, 0.05f));
         mSuitB = Mat("HS_ClownSuitB", new Color(0.36f, 0.34f, 0.28f));

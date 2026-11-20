@@ -4,8 +4,8 @@ using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
 
 /// <summary>
-/// Holds the game state: turns, keys, pause, win, lose and restart.
-/// Restart reloads the scene, which resets everything (turns, stamina, keys, killer, positions).
+/// Holds the game state: turns, pause, win, lose and restart.
+/// Restart reloads the scene, which resets everything (turns, stamina, killer, positions).
 /// </summary>
 [DefaultExecutionOrder(-100)]
 public class GameManager : MonoBehaviour
@@ -15,14 +15,12 @@ public class GameManager : MonoBehaviour
 
     public static GameManager Instance { get; private set; }
 
-    public int keysRequired = 3;
     [Tooltip("Short pause before the killer moves, so the turn change is readable.")]
     public float killerTurnDelay = 0.15f;
 
     public GameState State { get; private set; } = GameState.Playing;
     public Turn CurrentTurn { get; private set; } = Turn.Player;
     public int TurnNumber { get; private set; } = 1;
-    public int Keys { get; private set; }
     public bool IsPaused { get; private set; }
     public string EndMessage { get; private set; } = "";
 
@@ -77,17 +75,7 @@ public class GameManager : MonoBehaviour
         Time.timeScale = paused ? 0f : 1f;
     }
 
-    // ------------------------------------------------------------------ keys / end
-
-    /// <summary>Called by a key when picked up. Makes the killer a bit faster.</summary>
-    public void CollectKey()
-    {
-        if (!IsPlaying) return;
-        Keys++;
-        if (KillerAI.Instance) KillerAI.Instance.AddSpeedBonus();
-        if (Keys == keysRequired) AudioManager.Play(AudioManager.Sfx.AllKeys); // exits are open
-        Debug.Log($"[Game] Key collected {Keys}/{keysRequired}");
-    }
+    // ------------------------------------------------------------------ end
 
     public void Lose(string reason)
     {
@@ -102,7 +90,7 @@ public class GameManager : MonoBehaviour
     {
         if (!IsPlaying) return;
         State = GameState.Won;
-        EndMessage = "You found all the keys and got out.";
+        EndMessage = "You escaped.";
         AudioManager.Play(AudioManager.Sfx.Win);
         EndGame();
     }

@@ -4,14 +4,14 @@ using UnityEngine;
 /// <summary>
 /// All game audio, generated in code (no downloaded files).
 /// - Music: low evolving drone + slow heartbeat; a faster heartbeat and tense strings fade in during Chase.
-/// - Sound effects: footstep, rustle, key chime, danger sting, caught, win, dash denied.
+/// - Sound effects: footstep, rustle, danger sting, caught, win, dash denied.
 /// One instance survives scene reloads (Restart), so audio never doubles.
 /// Master volume / mute use AudioListener.volume, so they control everything.
 /// </summary>
 [DefaultExecutionOrder(-300)]
 public class AudioManager : MonoBehaviour
 {
-    public enum Sfx { Footstep, Rustle, Key, DangerSting, Caught, Win, Denied, AllKeys }
+    public enum Sfx { Footstep, Rustle, DangerSting, Caught, Win, Denied }
 
     public static AudioManager Instance { get; private set; }
 
@@ -172,11 +172,9 @@ public class AudioManager : MonoBehaviour
 
         SetupMusic();
 
-        clips = new AudioClip[8];
-        clips[(int)Sfx.AllKeys] = MakeAllKeys();
+        clips = new AudioClip[6];
         clips[(int)Sfx.Footstep] = MakeFootstep();
         clips[(int)Sfx.Rustle] = MakeRustle();
-        clips[(int)Sfx.Key] = MakeKeyChime();
         clips[(int)Sfx.DangerSting] = MakeDangerSting();
         clips[(int)Sfx.Caught] = MakeCaught();
         clips[(int)Sfx.Win] = MakeWinJingle();
@@ -476,22 +474,6 @@ public class AudioManager : MonoBehaviour
         AudioClip clip = AudioClip.Create("AirBed", n, 1, Rate, false);
         clip.SetData(data, 0);
         return clip;
-    }
-
-    /// <summary>"Mini win": rising 4-note chime, then a soft door-unlock clunk (about 1.5 s).</summary>
-    static AudioClip MakeAllKeys()
-    {
-        var rng = new System.Random(9);
-        float lp = 0f;
-        return Build("AllKeys", 1.6f, t =>
-        {
-            float chime = 0.22f * (Note(t, 659.3f, 5f) + Note(t - 0.14f, 784f, 5f) + Note(t - 0.28f, 987.8f, 5f) + Note(t - 0.42f, 1318.5f, 4f));
-            float c = t - 0.95f;
-            float noise = (float)rng.NextDouble() * 2f - 1f;
-            lp += (noise - lp) * 0.15f;
-            float clunk = c < 0f ? 0f : 0.45f * Thump(c, 70f) + 0.25f * lp * Mathf.Exp(-c * 30f) + (c > 0.08f ? 0.3f * Thump(c - 0.08f, 95f) : 0f);
-            return chime + clunk;
-        });
     }
 
     float Fade(float current, float target, float dt)
@@ -821,11 +803,6 @@ public class AudioManager : MonoBehaviour
             lp += ((float)rng.NextDouble() * 2f - 1f - lp) * 0.35f;
             return 0.7f * lp * Mathf.Sin(Mathf.PI * t / len) * (0.6f + 0.4f * Sin(22f, t));
         });
-    }
-
-    static AudioClip MakeKeyChime()
-    {
-        return Build("KeyChime", 0.8f, t => 0.3f * Note(t, 1318.5f, 6f) + 0.3f * Note(t - 0.12f, 1760f, 5f));
     }
 
     static AudioClip MakeDangerSting()

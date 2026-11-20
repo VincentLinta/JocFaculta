@@ -4,7 +4,7 @@ using UnityEngine.InputSystem.UI;
 using UnityEngine.UI;
 
 /// <summary>
-/// Builds the HUD at runtime: stamina (4 segments), keys, turn indicator, action buttons
+/// Builds the HUD at runtime: stamina (4 segments), turn indicator, action buttons
 /// (Dash / Hide / Wait), prompt, danger indicator, red vignette, hide darkening,
 /// pause menu, game over and win screens.
 /// </summary>
@@ -30,7 +30,6 @@ public class GameUI : MonoBehaviour
     Image vignette;
     Image hideOverlay;
     readonly Image[] staminaSegments = new Image[4];
-    Text keysText;
     Text promptText;
     Text dangerText;
     Text turnText;
@@ -48,32 +47,6 @@ public class GameUI : MonoBehaviour
     Text hideStatus;
     Text muteLabel;
     float hideAlpha;
-
-    [Header("All keys found")]
-    public float bannerTime = 4f;
-    public float exitHintTime = 5f;
-    [Tooltip("Distance (px) from the screen edge for exit arrows.")]
-    public float hintEdgeMargin = 90f;
-
-    class ExitHint
-    {
-        public ExitDoor door;
-        public RectTransform arrow;
-        public Image arrowImage;
-        public Text label;
-        public Vector2Int playerTile = new Vector2Int(-999, -999);
-        public int pathTiles;
-    }
-
-    RectTransform hudRoot;
-    Canvas hudCanvas;
-    Text banner;
-    Sprite arrowSprite;
-    readonly System.Collections.Generic.List<ExitHint> exitHints = new System.Collections.Generic.List<ExitHint>();
-    readonly System.Collections.Generic.Dictionary<Light, float> exitLightBase = new System.Collections.Generic.Dictionary<Light, float>();
-    bool allKeysShown;
-    float bannerLeft;
-    float hintLeft;
 
     void Start()
     {
@@ -129,7 +102,6 @@ public class GameUI : MonoBehaviour
             waitButton.interactable = canAct;
         }
 
-        keysText.text = $"KEYS {gm.Keys}/{gm.keysRequired}";
         promptText.text = GetPrompt(gm, player, canAct);
 
         bool playerTurn = gm.CurrentTurn == GameManager.Turn.Player;
@@ -158,151 +130,16 @@ public class GameUI : MonoBehaviour
             volumeLabel.text = $"VOLUME {Mathf.RoundToInt(audio.MasterVolume * 100f)}%";
             muteLabel.text = audio.Muted ? "UNMUTE" : "MUTE";
         }
-        UpdateAllKeysEvent(gm, player);
         losePanel.SetActive(gm.State == GameManager.GameState.Lost);
         winPanel.SetActive(gm.State == GameManager.GameState.Won);
         loseMessage.text = gm.EndMessage;
         winMessage.text = gm.EndMessage;
     }
 
-    // ------------------------------------------------------------------ all keys found
-
-    /// <summary>
-    /// Once per run, when the last key is picked up: a green banner (4 s) and 5 s of exit hints
-    /// (edge arrows, or a marker above an exit that is on screen) plus stronger exit lights.
-    /// Timers use scaled time, so they stop in the pause menu. Cleared on win / death; Restart reloads the scene.
-    /// </summary>
-    void UpdateAllKeysEvent(GameManager gm, PlayerController player)
-    {
-        if (!allKeysShown && gm.IsPlaying && gm.Keys >= gm.keysRequired)
-        {
-            allKeysShown = true;
-            bannerLeft = bannerTime;
-            hintLeft = exitHintTime;
-            BuildExitHints();
-        }
-        if (!gm.IsPlaying)
-        {
-            bannerLeft = 0f;
-            hintLeft = 0f;
-        }
-
-        float dt = Time.deltaTime; // 0 while paused
-        bannerLeft = Mathf.Max(0f, bannerLeft - dt);
-        hintLeft = Mathf.Max(0f, hintLeft - dt);
-
-        // Banner: fade in 0.5 s, fade out 0.8 s.
-        float bAlpha = bannerLeft <= 0f ? 0f : Mathf.Min(1f, (bannerTime - bannerLeft) / 0.5f, bannerLeft / 0.8f);
-        banner.enabled = bAlpha > 0f;
-        banner.color = new Color(0.35f, 1f, 0.45f, bAlpha);
-
-        float pulse01 = 0.5f + 0.5f * Mathf.Sin(Time.time * 6f);
-        float hAlpha = hintLeft <= 0f ? 0f : Mathf.Min(1f, (exitHintTime - hintLeft) / 0.3f, hintLeft / 1f);
-        Camera cam = Camera.main;
-        GridManager grid = GridManager.Instance;
-        foreach (ExitHint h in exitHints)
-        {
-            bool show = hAlpha > 0f && h.door != null && cam != null && grid != null && player != null;
-            h.arrow.gameObject.SetActive(show);
-            h.label.enabled = show;
-            if (!show) continue;
-
-            if (h.playerTile != player.Tile)
-            {
-                h.playerTile = player.Tile;
-                Vector2Int exitTile = grid.NearestWalkable(grid.WorldToTile(h.door.transform.position));
-                var path = grid.FindPath(player.Tile, exitTile);
-                h.pathTiles = path != null ? path.Count : Mathf.RoundToInt(Vector2Int.Distance(player.Tile, exitTile));
-            }
-
-            float scale = hudCanvas.scaleFactor;
-            Vector3 sp = cam.WorldToScreenPoint(h.door.transform.position + Vector3.up * 1.2f);
-            if (sp.z < 0f) sp = -sp;
-            float w = Screen.width, ht = Screen.height, m = hintEdgeMargin;
-            bool onScreen = sp.x > m && sp.x < w - m && sp.y > m && sp.y < ht - m;
-            Vector2 pos;
-            float angle;
-            Vector2 labelOffset;
-            if (onScreen)
-            {
-                // Marker above the exit, pointing down, bobbing.
-                pos = new Vector2(sp.x, sp.y + 70f + 12f * pulse01);
-                angle = -90f;
-                labelOffset = new Vector2(0f, 55f);
-            }
-            else
-            {
-                Vector2 center = new Vector2(w * 0.5f, ht * 0.5f);
-                Vector2 dir = ((Vector2)sp - center).normalized;
-                float t = Mathf.Min((w * 0.5f - m) / Mathf.Max(0.001f, Mathf.Abs(dir.x)), (ht * 0.5f - m) / Mathf.Max(0.001f, Mathf.Abs(dir.y)));
-                pos = center + dir * t;
-                angle = Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg;
-                labelOffset = -dir * 70f;
-            }
-            h.arrow.anchoredPosition = pos / scale;
-            h.arrow.localRotation = Quaternion.Euler(0f, 0f, angle);
-            h.arrow.localScale = Vector3.one * (0.9f + 0.25f * pulse01);
-            h.arrowImage.color = new Color(0.3f, 1f, 0.4f, hAlpha * (0.6f + 0.4f * pulse01));
-            h.label.rectTransform.anchoredPosition = (pos + labelOffset) / scale;
-            h.label.text = $"EXIT {h.pathTiles}";
-            h.label.color = new Color(0.55f, 1f, 0.6f, hAlpha);
-        }
-
-        // Exit lights pulse stronger while the hints are up.
-        foreach (ExitDoor door in ExitDoor.All)
-        {
-            if (door.doorLight == null) continue;
-            if (!exitLightBase.ContainsKey(door.doorLight)) exitLightBase[door.doorLight] = door.doorLight.intensity;
-            float baseI = exitLightBase[door.doorLight];
-            door.doorLight.intensity = hAlpha > 0f ? baseI * (1f + hAlpha * (0.6f + 1.2f * pulse01)) : baseI;
-        }
-    }
-
-    void BuildExitHints()
-    {
-        foreach (ExitDoor door in ExitDoor.All)
-        {
-            var h = new ExitHint { door = door };
-            h.arrowImage = MakeImage("ExitArrow", hudRoot, Color.clear); // raycastTarget stays false: never blocks clicks
-            h.arrowImage.sprite = arrowSprite;
-            h.arrow = h.arrowImage.rectTransform;
-            h.arrow.anchorMin = h.arrow.anchorMax = Vector2.zero;
-            h.arrow.pivot = new Vector2(0.5f, 0.5f);
-            h.arrow.sizeDelta = new Vector2(70f, 70f);
-            h.label = MakeText("ExitLabel", hudRoot, "EXIT", 26, TextAnchor.MiddleCenter);
-            h.label.rectTransform.anchorMin = h.label.rectTransform.anchorMax = Vector2.zero;
-            h.label.rectTransform.pivot = new Vector2(0.5f, 0.5f);
-            h.label.rectTransform.sizeDelta = new Vector2(160f, 34f);
-            exitHints.Add(h);
-        }
-    }
-
-    /// <summary>White arrow pointing right (+X), soft edges.</summary>
-    static Sprite MakeArrowSprite()
-    {
-        const int size = 64;
-        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp };
-        for (int y = 0; y < size; y++)
-        {
-            for (int x = 0; x < size; x++)
-            {
-                float u = x / (float)(size - 1), v = y / (float)(size - 1) - 0.5f;
-                float halfWidth = 0.45f * (1f - u);           // triangle: wide at the left, point at the right
-                float edge = halfWidth - Mathf.Abs(v);
-                float a = Mathf.Clamp01(edge * 40f) * Mathf.Clamp01(u * 20f);
-                tex.SetPixel(x, y, new Color(1f, 1f, 1f, a));
-            }
-        }
-        tex.Apply();
-        return Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f));
-    }
-
     string GetPrompt(GameManager gm, PlayerController player, bool canAct)
     {
         if (!gm.IsPlaying || player == null || !canAct) return "";
         if (player.IsHidden) return "Hidden - E to leave, W to wait (+25% stamina)";
-        if (ExitDoor.AnyPlayerNear && gm.Keys < gm.keysRequired)
-            return $"Locked - find {gm.keysRequired - gm.Keys} more key(s)";
         if (player.AvailableSpot) return "Press E to hide";
         return "Click a highlighted tile to move";
     }
@@ -345,9 +182,6 @@ public class GameUI : MonoBehaviour
             Place(staminaSegments[i].rectTransform, new Vector2(0f, 0f), new Vector2(40f + i * 82f, 40f), new Vector2(76f, 22f));
         }
 
-        keysText = MakeText("Keys", root, "KEYS 0/3", 34, TextAnchor.UpperLeft);
-        Place(keysText.rectTransform, new Vector2(0f, 1f), new Vector2(40f, -40f), new Vector2(400f, 44f));
-
         turnText = MakeText("Turn", root, "YOUR TURN", 34, TextAnchor.UpperRight);
         Place(turnText.rectTransform, new Vector2(1f, 1f), new Vector2(-40f, -40f), new Vector2(500f, 44f));
 
@@ -357,17 +191,6 @@ public class GameUI : MonoBehaviour
         dangerText = MakeText("Danger", root, "! DANGER !", 52, TextAnchor.MiddleCenter);
         Place(dangerText.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -50f), new Vector2(700f, 80f));
         dangerText.enabled = false;
-
-        // "All keys found" banner + a layer for exit hints (under the menus, never blocks clicks).
-        banner = MakeText("AllKeysBanner", root, "ALL KEYS FOUND - EXITS ARE NOW OPEN", 54, TextAnchor.MiddleCenter);
-        Place(banner.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -140f), new Vector2(1600f, 80f));
-        banner.enabled = false;
-        var hintLayer = new GameObject("ExitHints", typeof(RectTransform)).GetComponent<RectTransform>();
-        hintLayer.SetParent(root, false);
-        Stretch(hintLayer);
-        hudRoot = hintLayer;
-        hudCanvas = canvasGO.GetComponent<Canvas>();
-        arrowSprite = MakeArrowSprite();
 
         // Action buttons (bottom right).
         dashButton = MakeButton(root, "DASH (Space)", new Vector2(1f, 0f), new Vector2(-560f, 40f), new Vector2(250f, 70f), out dashLabel,
