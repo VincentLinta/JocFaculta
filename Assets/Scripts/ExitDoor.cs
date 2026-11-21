@@ -40,16 +40,17 @@ public class ExitDoor : MonoBehaviour
         PlayerController player = PlayerController.Instance;
         GridManager grid = GridManager.Instance;
         if (gm == null || player == null || grid == null) return;
-        if (!gm.useKeysAndExits) return; // the key / exit goal is switched off (survive instead)
-
-        bool unlocked = gm.Keys >= gm.keysRequired;
-        if (doorLight) doorLight.color = unlocked ? openColor : lockedColor;
+        bool keysMode = gm.useKeysAndExits;
+        bool unlocked = keysMode && gm.Keys >= gm.keysRequired;
+        if (gm.EscapeActive && gm.EscapeDoor == this) unlocked = true; // opened by an Escape card
+        if (doorLight && (keysMode || gm.EscapeActive)) doorLight.color = unlocked ? openColor : lockedColor;
 
         // Use the player's tile (not the animated position) so the exit sits on fixed tiles.
         Vector3 offset = grid.TileCenter(player.Tile) - transform.position;
         offset.y = 0f;
         PlayerNear = !player.IsHidden && offset.magnitude < reachTiles * grid.tileSize;
 
-        if (PlayerNear && unlocked && gm.IsPlaying && !player.IsBusy) gm.Win();
+        // Keys goal: walking in wins. Escape card: the player has to press E (handled by PlayerController).
+        if (keysMode && PlayerNear && gm.Keys >= gm.keysRequired && gm.IsPlaying && !player.IsBusy) gm.Win();
     }
 }

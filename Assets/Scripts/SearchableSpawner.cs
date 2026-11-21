@@ -9,8 +9,12 @@ using UnityEngine;
 public class SearchableSpawner : MonoBehaviour
 {
     public int count = 10;
-    [Tooltip("Chance (0-1) that an object holds an energy drink.")]
-    public float drinkChance = 0.4f;
+    [Tooltip("At least this many objects always hold a card.")]
+    public int guaranteedCards = 4;
+    [Tooltip("Chance (0-1) that any other object holds a card.")]
+    public float cardChance = 0.15f;
+    [Tooltip("Chance (0-1) that any other object holds an energy drink.")]
+    public float drinkChance = 0.3f;
     [Tooltip("Minimum distance between two objects, in tiles.")]
     public int minSpacing = 4;
 
@@ -65,8 +69,11 @@ public class SearchableSpawner : MonoBehaviour
             foreach (Vector2Int u in used)
                 if (GridManager.Chebyshev(u, c.Key) < minSpacing) { tooClose = true; break; }
             if (tooClose) continue;
+            bool card = used.Count < guaranteedCards;
+            var all = (CardType[])System.Enum.GetValues(typeof(CardType));
+            CardType forced = all[used.Count % all.Length]; // guaranteed cards cycle through every type
             used.Add(c.Key);
-            Place(grid, c.Key, c.Value);
+            Place(grid, c.Key, c.Value, card, forced);
         }
         Debug.Log($"[Searchables] Placed {used.Count} searchable objects.");
     }
@@ -78,7 +85,7 @@ public class SearchableSpawner : MonoBehaviour
         return false;
     }
 
-    void Place(GridManager grid, Vector2Int tile, Vector2Int wallDir)
+    void Place(GridManager grid, Vector2Int tile, Vector2Int wallDir, bool forceCard, CardType forcedType)
     {
         var go = new GameObject("Searchable");
         go.transform.SetParent(transform, false);
@@ -86,7 +93,11 @@ public class SearchableSpawner : MonoBehaviour
         go.transform.position = grid.TileCenter(tile) + dir * (grid.tileSize * 0.5f - 0.48f);
         go.transform.rotation = Quaternion.LookRotation(-dir); // front faces the room
         var so = go.AddComponent<SearchableObject>();
-        var contents = Random.value < drinkChance ? SearchableObject.Contents.EnergyDrink : SearchableObject.Contents.Nothing;
-        so.Init(grid, tile, Random.value < 0.5f, contents);
+        float r = Random.value;
+        SearchableObject.Contents contents = SearchableObject.Contents.Nothing;
+        if (forceCard || r < cardChance) contents = SearchableObject.Contents.Card;
+        else if (r < cardChance + drinkChance) contents = SearchableObject.Contents.EnergyDrink;
+        var types = (CardType[])System.Enum.GetValues(typeof(CardType));
+        so.Init(grid, tile, Random.value < 0.5f, contents, forceCard ? forcedType : types[Random.Range(0, types.Length)]);
     }
 }

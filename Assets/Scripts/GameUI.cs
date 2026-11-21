@@ -32,6 +32,7 @@ public class GameUI : MonoBehaviour
     Text keysText;
     Text promptText;
     Text toastText;
+    Text cardsText;
     Text dangerText;
     Text phaseText;
     Text phaseBanner;
@@ -112,7 +113,7 @@ public class GameUI : MonoBehaviour
             if (player.IsHidden)
             {
                 bool saw = killer != null && killer.IsHunting && killer.LastHideWitnessed;
-                hideStatus.text = saw ? "He saw you" : "Hidden";
+                hideStatus.text = (saw ? "He saw you" : "Hidden") + (killer != null && killer.CheckFortified ? " - FORTIFIED" : "");
                 hideStatus.color = saw ? new Color(0.75f, 0.2f, 0.18f, 0.85f) : new Color(0.6f, 0.6f, 0.6f, 0.7f);
             }
             else hideStatus.text = "";
@@ -127,6 +128,19 @@ public class GameUI : MonoBehaviour
         keysText.enabled = gm.useKeysAndExits;
         keysText.text = $"KEYS {gm.Keys}/{gm.keysRequired}";
         promptText.text = GetPrompt(gm, player, canAct);
+        if (player != null)
+        {
+            var sb = new System.Text.StringBuilder();
+            foreach (var kv in player.Cards)
+                if (kv.Value > 0)
+                {
+                    string hex = ColorUtility.ToHtmlStringRGB(CardInfo.Tint(kv.Key));
+                    string key = kv.Key == CardType.Escape && gm.CanUseEscape ? "  [Q]" : "";
+                    sb.Append("<color=#").Append(hex).Append(">CARD  ").Append(CardInfo.Name(kv.Key)).Append(" x").Append(kv.Value).Append(key).Append("</color>\n");
+                }
+            cardsText.text = sb.ToString().TrimEnd('\n');
+            cardsText.color = Color.white;
+        }
         bool toast = Time.time < SearchableObject.ToastUntil && !string.IsNullOrEmpty(SearchableObject.ToastText);
         toastText.text = toast ? SearchableObject.ToastText : "";
         toastText.color = SearchableObject.ToastColor;
@@ -205,7 +219,9 @@ public class GameUI : MonoBehaviour
             checkBack.rectTransform.anchoredPosition = new Vector2(sp.x, sp.y) / hudCanvas.scaleFactor;
             float p = Mathf.Clamp(killer.CheckProgress, 0.05f, 1f);
             checkFill.rectTransform.anchorMax = new Vector2(p, 1f);
-            checkFill.color = Color.Lerp(new Color(0.95f, 0.75f, 0.2f), new Color(0.9f, 0.1f, 0.1f), killer.CheckProgress);
+            checkFill.color = killer.CheckFortified
+                ? Color.Lerp(new Color(0.45f, 0.8f, 1f), new Color(0.9f, 0.1f, 0.1f), killer.CheckProgress)
+                : Color.Lerp(new Color(0.95f, 0.75f, 0.2f), new Color(0.9f, 0.1f, 0.1f), killer.CheckProgress);
         }
     }
 
@@ -218,8 +234,10 @@ public class GameUI : MonoBehaviour
     /// </summary>
     void UpdateAllKeysEvent(GameManager gm, PlayerController player)
     {
-        if (!gm.useKeysAndExits) return; // the key / exit goal is switched off
-        if (!allKeysShown && gm.IsPlaying && gm.Keys >= gm.keysRequired)
+        if (!gm.useKeysAndExits && !gm.EscapeActive) return; // neither keys nor an Escape card in play
+        bool escape = gm.EscapeActive && gm.IsPlaying;
+        if (escape && exitHints.Count == 0) BuildExitHints();
+        if (gm.useKeysAndExits && !allKeysShown && gm.IsPlaying && gm.Keys >= gm.keysRequired)
         {
             allKeysShown = true;
             bannerLeft = bannerTime;
@@ -243,11 +261,13 @@ public class GameUI : MonoBehaviour
 
         float pulse01 = 0.5f + 0.5f * Mathf.Sin(Time.time * 6f);
         float hAlpha = hintLeft <= 0f ? 0f : Mathf.Min(1f, (exitHintTime - hintLeft) / 0.3f, hintLeft / 1f);
+        if (escape) hAlpha = 1f; // the escape exit stays marked the whole time
         Camera cam = Camera.main;
         GridManager grid = GridManager.Instance;
         foreach (ExitHint h in exitHints)
         {
             bool show = hAlpha > 0f && h.door != null && cam != null && grid != null && player != null;
+            if (escape && h.door != gm.EscapeDoor) show = false;
             h.arrow.gameObject.SetActive(show);
             h.label.enabled = show;
             if (!show) continue;
@@ -299,7 +319,8 @@ public class GameUI : MonoBehaviour
             if (door.doorLight == null) continue;
             if (!exitLightBase.ContainsKey(door.doorLight)) exitLightBase[door.doorLight] = door.doorLight.intensity;
             float baseI = exitLightBase[door.doorLight];
-            door.doorLight.intensity = hAlpha > 0f ? baseI * (1f + hAlpha * (0.6f + 1.2f * pulse01)) : baseI;
+            bool lit = hAlpha > 0f && (!escape || door == gm.EscapeDoor);
+            door.doorLight.intensity = lit ? baseI * (1f + hAlpha * (0.6f + 1.2f * pulse01)) : baseI;
         }
     }
 
@@ -345,6 +366,7 @@ public class GameUI : MonoBehaviour
     string GetPrompt(GameManager gm, PlayerController player, bool canAct)
     {
         if (!gm.IsPlaying || player == null || !canAct) return "";
+        if (gm.EscapeActive) return gm.EscapeDoor != null && gm.EscapeDoor.PlayerNear ? "Press E to ESCAPE!" : "RUN to the exit!";
         bool hiding = gm.CurrentPhase == GameManager.Phase.Hiding;
         if (player.IsHidden) return hiding ? "Hidden - wait for the clown" : (player.IsLockedIn ? "Hidden - stay quiet and hope he misses you" : "Hidden - stay quiet (E to leave)");
         if (player.AvailableSpot) return "Press E to hide";
@@ -400,12 +422,15 @@ public class GameUI : MonoBehaviour
         Place(checkedText.rectTransform, new Vector2(0f, 1f), new Vector2(40f, -90f), new Vector2(500f, 34f));
         checkedText.enabled = false;
 
-        Text controls = MakeText("Controls", root, "Click: walk | Space/Shift: run | E: hide / search | Right mouse + drag: camera | Wheel: zoom", 20, TextAnchor.MiddleCenter);
+        Text controls = MakeText("Controls", root, "Click: walk | Space/Shift: run | E: hide / search | Q: Escape card | Right mouse + drag: camera | Wheel: zoom", 20, TextAnchor.MiddleCenter);
         Place(controls.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 12f), new Vector2(1400f, 28f));
         controls.color = new Color(0.9f, 0.88f, 0.82f, 0.55f);
 
         promptText = MakeText("Prompt", root, "", 30, TextAnchor.MiddleCenter);
         Place(promptText.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 130f), new Vector2(1000f, 50f));
+
+        cardsText = MakeText("Cards", root, "", 24, TextAnchor.LowerLeft);
+        Place(cardsText.rectTransform, new Vector2(0f, 0f), new Vector2(40f, 110f), new Vector2(700f, 70f));
 
         toastText = MakeText("Toast", root, "", 30, TextAnchor.MiddleCenter);
         Place(toastText.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 190f), new Vector2(1000f, 50f));

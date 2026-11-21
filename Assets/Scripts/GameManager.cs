@@ -49,6 +49,25 @@ public class GameManager : MonoBehaviour
 
     public GameState State { get; private set; } = GameState.Playing;
     public Phase CurrentPhase { get; private set; } = Phase.Hiding;
+
+    /// <summary>True after the player used an Escape card: one exit is open and the clown rushes the player.</summary>
+    public bool EscapeActive { get; private set; }
+    /// <summary>The exit that the Escape card opened.</summary>
+    public ExitDoor EscapeDoor { get; private set; }
+    /// <summary>An Escape card can be used during the chase phase, once per run.</summary>
+    public bool CanUseEscape => IsPlaying && !IsPaused && CurrentPhase == Phase.Chase && !EscapeActive && ExitDoor.All.Count > 0;
+
+    /// <summary>Opens a random exit and sends the clown straight at the player.</summary>
+    public bool ActivateEscape()
+    {
+        if (!CanUseEscape) return false;
+        EscapeDoor = ExitDoor.All[Random.Range(0, ExitDoor.All.Count)];
+        EscapeActive = true;
+        if (KillerAI.Instance != null) KillerAI.Instance.BeginEscapeChase();
+        AudioManager.Play(AudioManager.Sfx.AllKeys);
+        SearchableObject.ShowToast("ESCAPE! An exit is open - run to it and press E!", new Color(1f, 0.65f, 0.25f), 5f);
+        return true;
+    }
     /// <summary>Seconds left in the current phase.</summary>
     public float PhaseTimeLeft { get; private set; }
     public int Keys { get; private set; }

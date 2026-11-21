@@ -56,6 +56,20 @@ public class PlayerController : MonoBehaviour
     /// <summary>A cabinet / dresser in reach that can be searched with E (only when no hiding spot is in reach), or null.</summary>
     public SearchableObject AvailableSearchable { get; private set; }
 
+    readonly Dictionary<CardType, int> cards = new Dictionary<CardType, int>();
+    /// <summary>The cards the player holds and how many of each.</summary>
+    public IEnumerable<KeyValuePair<CardType, int>> Cards => cards;
+    public int CardCount(CardType t) => cards.TryGetValue(t, out int n) ? n : 0;
+    public void AddCard(CardType t) { cards[t] = CardCount(t) + 1; }
+    /// <summary>Uses up one card of this type. Returns false if the player has none.</summary>
+    public bool TryUseCard(CardType t)
+    {
+        int n = CardCount(t);
+        if (n <= 0) return false;
+        cards[t] = n - 1;
+        return true;
+    }
+
     GridManager grid;
     Camera cam;
     Renderer[] renderers;
@@ -109,6 +123,11 @@ public class PlayerController : MonoBehaviour
         if (kb != null && kb.eKey.wasPressedThisFrame)
         {
             HideOrExit();
+            return;
+        }
+        if (kb != null && kb.qKey.wasPressedThisFrame)
+        {
+            UseEscapeCard();
             return;
         }
 
@@ -238,12 +257,31 @@ public class PlayerController : MonoBehaviour
     {
         GameManager gm = GameManager.Instance;
         if (gm == null || !gm.CanPlayerAct || IsBusy) return;
+
+        // Escape card active and standing at the opened exit: E gets you out.
+        if (gm.EscapeActive && gm.EscapeDoor != null && gm.EscapeDoor.PlayerNear)
+        {
+            gm.Win("You escaped! The clown was too late.");
+            return;
+        }
+
         if (IsHidden)
         {
             if (!lockInHidingSpot) StartCoroutine(ExitAction());
         }
         else if (AvailableSpot != null) StartCoroutine(EnterAction(AvailableSpot));
         else if (AvailableSearchable != null) StartCoroutine(SearchAction(AvailableSearchable));
+    }
+
+    /// <summary>Q: uses an Escape card. Opens a random exit, the clown rushes the player. Works from a hiding spot too.</summary>
+    public void UseEscapeCard()
+    {
+        GameManager gm = GameManager.Instance;
+        if (gm == null || !gm.CanPlayerAct || IsBusy || !gm.CanUseEscape || CardCount(CardType.Escape) <= 0) return;
+        if (IsHidden && !TryGetExitTile(CurrentSpot, out Vector2Int _)) return; // the clown blocks the way out
+        TryUseCard(CardType.Escape);
+        gm.ActivateEscape();
+        if (IsHidden) StartCoroutine(ExitAction()); // breaks the hiding lock: you have to run
     }
 
     IEnumerator SearchAction(SearchableObject obj)

@@ -8,7 +8,7 @@ using UnityEngine;
 /// </summary>
 public class SearchableObject : MonoBehaviour
 {
-    public enum Contents { Nothing, EnergyDrink }
+    public enum Contents { Nothing, EnergyDrink, Card }
 
     /// <summary>Every searchable object in the scene.</summary>
     public static readonly List<SearchableObject> All = new List<SearchableObject>();
@@ -19,6 +19,7 @@ public class SearchableObject : MonoBehaviour
     public static float ToastUntil;
 
     public Contents contents = Contents.Nothing;
+    public CardType card = CardType.Fortify;
     public float searchTime = 1.6f;
     public bool IsSearched { get; private set; }
     public Vector2Int Tile { get; private set; }
@@ -33,8 +34,9 @@ public class SearchableObject : MonoBehaviour
     void OnDisable() { All.Remove(this); }
 
     /// <summary>Builds the model and sets the tile. Called by the spawner. Forward (+Z) is the open front.</summary>
-    public void Init(GridManager grid, Vector2Int tile, bool isDresser, Contents c)
+    public void Init(GridManager grid, Vector2Int tile, bool isDresser, Contents c, CardType cardType = CardType.Fortify)
     {
+        card = cardType;
         Tile = tile;
         dresser = isDresser;
         contents = c;
@@ -85,14 +87,23 @@ public class SearchableObject : MonoBehaviour
             AudioManager.Play(AudioManager.Sfx.Key);
             Toast("Found an energy drink - stamina restored", new Color(0.5f, 1f, 0.55f));
         }
+        else if (contents == Contents.Card)
+        {
+            player.AddCard(card);
+            AudioManager.Play(AudioManager.Sfx.AllKeys);
+            Toast($"Found card: {CardInfo.Name(card)} - {CardInfo.Description(card)}", CardInfo.Tint(card), 4f);
+        }
         else Toast("Nothing but dust.", new Color(0.85f, 0.82f, 0.75f));
     }
 
-    static void Toast(string text, Color color)
+    static void Toast(string text, Color color, float seconds = 2.5f) { ShowToast(text, color, seconds); }
+
+    /// <summary>Shows a short message above the prompt in the HUD.</summary>
+    public static void ShowToast(string text, Color color, float seconds = 2.5f)
     {
         ToastText = text;
         ToastColor = color;
-        ToastUntil = Time.time + 2.5f;
+        ToastUntil = Time.time + seconds;
     }
 
     void SetOpen(float k)

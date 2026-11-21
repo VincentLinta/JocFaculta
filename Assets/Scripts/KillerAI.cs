@@ -33,6 +33,10 @@ public class KillerAI : MonoBehaviour
     [Header("Checking a hiding spot")]
     [Tooltip("Seconds the progress bar takes to fill.")]
     public float checkTime = 2.5f;
+    [Tooltip("Fortify card: the check of the spot you hide in takes this many times longer.")]
+    public float fortifyMultiplier = 2.5f;
+    [Tooltip("Escape card: the clown runs at this many times the player's walk speed.")]
+    public float escapeSpeedMultiplier = 2f;
     [Tooltip("How far the raised hand goes up (degrees).")]
     public float raiseAngle = 105f;
 
@@ -91,6 +95,11 @@ public class KillerAI : MonoBehaviour
     List<Vector2Int> path;
     int pathIndex;
     float checkTimer;
+    float currentCheckTime;
+    /// <summary>True while he searches the player's spot and a Fortify card slows him down.</summary>
+    public bool CheckFortified { get; private set; }
+    /// <summary>True after an Escape card was used: he always knows where the player is and rushes him.</summary>
+    public bool EscapeMode { get; private set; }
     float searchSoundTimer;
     float chaseLoseTimer;
     float repathTimer;
@@ -140,6 +149,14 @@ public class KillerAI : MonoBehaviour
         if (gm == null || !gm.IsPlaying || gm.IsPaused) return;
         float dt = Time.deltaTime;
 
+        if (EscapeMode)
+        {
+            UpdateEscapeChase(dt);
+            UpdateArm(dt);
+            UpdateIdleSounds();
+            return;
+        }
+
         // Seeing the player in the open always starts a chase.
         bool sees = CanSeePlayer();
         if (sees && CurrentState != State.Chase) EnterChase();
@@ -153,6 +170,45 @@ public class KillerAI : MonoBehaviour
 
         UpdateArm(dt);
         UpdateIdleSounds();
+    }
+
+    // ------------------------------------------------------------------ escape card
+
+    /// <summary>Called when the player uses an Escape card: drop everything and run at the player.</summary>
+    public void BeginEscapeChase()
+    {
+        if (!hunting || EscapeMode) return;
+        EscapeMode = true;
+        targetSpot = null;
+        CheckingSpot = null;
+        CheckProgress = 0f;
+        CheckFortified = false;
+        CurrentState = State.Chase;
+        repathTimer = 0f;
+        path = null;
+        AudioManager.Play(AudioManager.Sfx.DangerSting);
+        AudioManager.PlayAt(AudioManager.Sfx.KillerHonk, transform.position);
+    }
+
+    void UpdateEscapeChase(float dt)
+    {
+        float speed = player.walkSpeed * escapeSpeedMultiplier;
+        repathTimer -= dt;
+        if (repathTimer <= 0f || path == null)
+        {
+            repathTimer = 0.25f;
+            path = grid.FindPath(CurrentTile, player.Tile);
+            pathIndex = 0;
+        }
+        if (path != null) Follow(speed, dt);
+
+        Vector3 flat = player.transform.position - transform.position;
+        flat.y = 0f;
+        if (!player.IsHidden && flat.magnitude < catchDistance)
+        {
+            FaceTowards(player.transform.position);
+            if (GameManager.Instance) GameManager.Instance.Lose("The clown caught you.");
+        }
     }
 
     // ------------------------------------------------------------------ hunt start
@@ -226,6 +282,15 @@ public class KillerAI : MonoBehaviour
         checkTimer = 0f;
         CheckProgress = 0f;
         searchSoundTimer = 0f;
+
+        // Fortify card: if the player is hiding right here, spend one card to make the check slower.
+        currentCheckTime = checkTime;
+        CheckFortified = false;
+        if (targetSpot != null && targetSpot.isOccupied && player != null && player.IsHidden && player.TryUseCard(CardType.Fortify))
+        {
+            currentCheckTime = checkTime * fortifyMultiplier;
+            CheckFortified = true;
+        }
         FaceTowards(targetSpot.transform.position);
     }
 
@@ -237,7 +302,7 @@ public class KillerAI : MonoBehaviour
             return;
         }
         checkTimer += dt;
-        CheckProgress = Mathf.Clamp01(checkTimer / checkTime);
+        CheckProgress = Mathf.Clamp01(checkTimer / currentCheckTime);
 
         // Rummaging / creaking sound while the bar fills.
         searchSoundTimer -= dt;
@@ -247,7 +312,7 @@ public class KillerAI : MonoBehaviour
             searchSoundTimer = 0.95f;
         }
 
-        if (checkTimer >= checkTime) FinishCheck();
+        if (checkTimer >= currentCheckTime) FinishCheck();
     }
 
     void FinishCheck()
@@ -257,6 +322,7 @@ public class KillerAI : MonoBehaviour
         if (spot == witnessedSpot) witnessedSpot = null;
         CheckingSpot = null;
         CheckProgress = 0f;
+        CheckFortified = false;
 
         if (spot.isOccupied)
         {
