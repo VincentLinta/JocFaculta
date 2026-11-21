@@ -22,6 +22,10 @@ public class ExitDoor : MonoBehaviour
     [Tooltip("Player tiles closer than this (in tiles) to the door count as 'at the door'.")]
     public float reachTiles = 0.8f;
     public Light doorLight;
+    [Tooltip("Escape doors are spawned by SearchableSpawner. Only the one opened by the Escape card glows.")]
+    public bool isEscapeDoor;
+    [Tooltip("Glowing panel of an escape door.")]
+    public Renderer panel;
     public Color lockedColor = new Color(1f, 0.15f, 0.1f);
     public Color openColor = new Color(0.2f, 1f, 0.35f);
 
@@ -34,23 +38,51 @@ public class ExitDoor : MonoBehaviour
 
     void OnDisable() { All.Remove(this); }
 
+    Material panelMat;
+
     void Update()
     {
         GameManager gm = GameManager.Instance;
         PlayerController player = PlayerController.Instance;
         GridManager grid = GridManager.Instance;
         if (gm == null || player == null || grid == null) return;
-        bool keysMode = gm.useKeysAndExits;
-        bool unlocked = keysMode && gm.Keys >= gm.keysRequired;
-        if (gm.EscapeActive && gm.EscapeDoor == this) unlocked = true; // opened by an Escape card
-        if (doorLight && (keysMode || gm.EscapeActive)) doorLight.color = unlocked ? openColor : lockedColor;
 
         // Use the player's tile (not the animated position) so the exit sits on fixed tiles.
         Vector3 offset = grid.TileCenter(player.Tile) - transform.position;
         offset.y = 0f;
         PlayerNear = !player.IsHidden && offset.magnitude < reachTiles * grid.tileSize;
 
-        // Keys goal: walking in wins. Escape card: the player has to press E (handled by PlayerController).
-        if (keysMode && PlayerNear && gm.Keys >= gm.keysRequired && gm.IsPlaying && !player.IsBusy) gm.Win();
+        if (isEscapeDoor)
+        {
+            UpdateEscapeDoor(gm);
+            return;
+        }
+
+        // Old goal (only when keys and exits are switched on): collect all keys, walk to an exit.
+        if (!gm.useKeysAndExits) return;
+        bool unlocked = gm.Keys >= gm.keysRequired;
+        if (doorLight) doorLight.color = unlocked ? openColor : lockedColor;
+        if (PlayerNear && unlocked && gm.IsPlaying && !player.IsBusy) gm.Win();
+    }
+
+    /// <summary>Closed: dark red panel, no light. Opened by the Escape card: bright green panel and light.</summary>
+    void UpdateEscapeDoor(GameManager gm)
+    {
+        bool open = gm.EscapeArmed && gm.EscapeDoor == this;
+        if (panel != null)
+        {
+            if (panelMat == null) panelMat = panel.material;
+            Color c = open
+                ? Color.Lerp(openColor * 0.7f, openColor, 0.5f + 0.5f * Mathf.Sin(Time.time * 5f))
+                : new Color(0.22f, 0.04f, 0.04f);
+            c.a = 1f;
+            panelMat.color = c;
+            if (panelMat.HasProperty("_BaseColor")) panelMat.SetColor("_BaseColor", c);
+        }
+        if (doorLight)
+        {
+            doorLight.color = openColor;
+            doorLight.enabled = open;
+        }
     }
 }

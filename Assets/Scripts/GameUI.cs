@@ -136,7 +136,7 @@ public class GameUI : MonoBehaviour
                 {
                     string hex = ColorUtility.ToHtmlStringRGB(CardInfo.Tint(kv.Key));
                     string key = kv.Key == CardType.Escape && gm.CanUseEscape ? "  [Q]" : "";
-                    sb.Append("<color=#").Append(hex).Append(">CARD  ").Append(CardInfo.Name(kv.Key)).Append(" x").Append(kv.Value).Append(key).Append("</color>\n");
+                    sb.Append("<color=#").Append(hex).Append(">CARD  ").Append(CardInfo.Name(kv.Key)).Append(key).Append("</color>\n");
                 }
             cardsText.text = sb.ToString().TrimEnd('\n');
             cardsText.color = Color.white;
@@ -234,8 +234,8 @@ public class GameUI : MonoBehaviour
     /// </summary>
     void UpdateAllKeysEvent(GameManager gm, PlayerController player)
     {
-        if (!gm.useKeysAndExits && !gm.EscapeActive) return; // neither keys nor an Escape card in play
-        bool escape = gm.EscapeActive && gm.IsPlaying;
+        if (!gm.useKeysAndExits && !gm.EscapeArmed) return; // neither keys nor an Escape card in play
+        bool escape = gm.EscapeArmed && gm.IsPlaying;
         if (escape && exitHints.Count == 0) BuildExitHints();
         if (gm.useKeysAndExits && !allKeysShown && gm.IsPlaying && gm.Keys >= gm.keysRequired)
         {
@@ -309,7 +309,7 @@ public class GameUI : MonoBehaviour
             h.arrow.localScale = Vector3.one * (0.9f + 0.25f * pulse01);
             h.arrowImage.color = new Color(0.3f, 1f, 0.4f, hAlpha * (0.6f + 0.4f * pulse01));
             h.label.rectTransform.anchoredPosition = (pos + labelOffset) / scale;
-            h.label.text = $"EXIT {h.pathTiles}";
+            h.label.text = escape ? "ESCAPE" : $"EXIT {h.pathTiles}";
             h.label.color = new Color(0.55f, 1f, 0.6f, hAlpha);
         }
 
@@ -366,7 +366,8 @@ public class GameUI : MonoBehaviour
     string GetPrompt(GameManager gm, PlayerController player, bool canAct)
     {
         if (!gm.IsPlaying || player == null || !canAct) return "";
-        if (gm.EscapeActive) return gm.EscapeDoor != null && gm.EscapeDoor.PlayerNear ? "Press E to ESCAPE!" : "RUN to the exit!";
+        if (gm.EscapeActive) return "Running to the exit!";
+        if (gm.EscapeArmed && player.IsHidden) return "Press Q to leave your hiding spot and run to the open door!";
         bool hiding = gm.CurrentPhase == GameManager.Phase.Hiding;
         if (player.IsHidden) return hiding ? "Hidden - wait for the clown" : (player.IsLockedIn ? "Hidden - stay quiet and hope he misses you" : "Hidden - stay quiet (E to leave)");
         if (player.AvailableSpot) return "Press E to hide";

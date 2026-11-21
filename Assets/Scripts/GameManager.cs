@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.InputSystem;
@@ -50,24 +51,42 @@ public class GameManager : MonoBehaviour
     public GameState State { get; private set; } = GameState.Playing;
     public Phase CurrentPhase { get; private set; } = Phase.Hiding;
 
-    /// <summary>True after the player used an Escape card: one exit is open and the clown rushes the player.</summary>
+    /// <summary>True when an Escape card opened one of the escape doors.</summary>
+    public bool EscapeArmed { get; private set; }
+    /// <summary>True after the player pressed Q: he runs for the exit and the clown rushes him.</summary>
     public bool EscapeActive { get; private set; }
-    /// <summary>The exit that the Escape card opened.</summary>
+    /// <summary>The escape door that is open.</summary>
     public ExitDoor EscapeDoor { get; private set; }
-    /// <summary>An Escape card can be used during the chase phase, once per run.</summary>
-    public bool CanUseEscape => IsPlaying && !IsPaused && CurrentPhase == Phase.Chase && !EscapeActive && ExitDoor.All.Count > 0;
+    /// <summary>True during the short camera shot of the opened door, right before the clown spawns.</summary>
+    public bool IsRevealing { get; private set; }
+    /// <summary>Q works once a door is open and the run has not started yet.</summary>
+    public bool CanUseEscape => IsPlaying && !IsPaused && EscapeArmed && !EscapeActive && !IsRevealing;
 
-    /// <summary>Opens a random exit and sends the clown straight at the player.</summary>
+    /// <summary>Opens one random escape door and points the camera at it.</summary>
+    public bool ArmEscape(float focusSeconds)
+    {
+        if (!IsPlaying || EscapeArmed) return false;
+        var doors = new List<ExitDoor>();
+        foreach (ExitDoor d in ExitDoor.All) if (d.isEscapeDoor) doors.Add(d);
+        if (doors.Count == 0) return false;
+        EscapeDoor = doors[Random.Range(0, doors.Count)];
+        EscapeArmed = true;
+        if (CameraFollow.Instance != null) CameraFollow.Instance.FocusOn(EscapeDoor.transform, focusSeconds);
+        AudioManager.Play(AudioManager.Sfx.AllKeys);
+        SearchableObject.ShowToast("ESCAPE - a door has opened! Press Q to run for it.", new Color(0.4f, 1f, 0.5f), 5f);
+        return true;
+    }
+
+    /// <summary>Q pressed: the player runs for the open door and the clown rushes him.</summary>
     public bool ActivateEscape()
     {
         if (!CanUseEscape) return false;
-        EscapeDoor = ExitDoor.All[Random.Range(0, ExitDoor.All.Count)];
         EscapeActive = true;
         if (KillerAI.Instance != null) KillerAI.Instance.BeginEscapeChase();
-        AudioManager.Play(AudioManager.Sfx.AllKeys);
-        SearchableObject.ShowToast("ESCAPE! An exit is open - run to it and press E!", new Color(1f, 0.65f, 0.25f), 5f);
+        SearchableObject.ShowToast("RUN! The clown is coming for you!", new Color(1f, 0.35f, 0.25f), 3f);
         return true;
     }
+
     /// <summary>Seconds left in the current phase.</summary>
     public float PhaseTimeLeft { get; private set; }
     public int Keys { get; private set; }
@@ -124,11 +143,17 @@ public class GameManager : MonoBehaviour
             if (!IsPlaying && kb.rKey.wasPressedThisFrame) Restart();
         }
 
-        if (!IsPlaying || IsPaused) return;
+        if (!IsPlaying || IsPaused || IsRevealing) return;
 
         PhaseTimeLeft = Mathf.Max(0f, PhaseTimeLeft - Time.deltaTime);
         if (CurrentPhase == Phase.Hiding) UpdateHidingPhase();
-        else if (PhaseTimeLeft <= 0f) Win("You survived. The clown did not find you.");
+        else
+        {
+            // Found an Escape card during the chase (while not hidden): the door opens now.
+            PlayerController p = PlayerController.Instance;
+            if (!EscapeArmed && p != null && p.CardCount(CardType.Escape) > 0) ArmEscape(2f);
+            if (PhaseTimeLeft <= 0f) Win("You survived. The clown did not find you.");
+        }
     }
 
     // ------------------------------------------------------------------ phases
@@ -150,6 +175,26 @@ public class GameManager : MonoBehaviour
     }
 
     void StartChasePhase()
+    {
+        // With an Escape card: first show the door that opened (camera + light), then the clown spawns.
+        PlayerController p = PlayerController.Instance;
+        if (!IsRevealing && !EscapeArmed && p != null && p.CardCount(CardType.Escape) > 0 && ArmEscape(2f))
+        {
+            StartCoroutine(RevealThenChase());
+            return;
+        }
+        BeginChase();
+    }
+
+    System.Collections.IEnumerator RevealThenChase()
+    {
+        IsRevealing = true;
+        yield return new WaitForSeconds(2f); // glide to the door, one second of looking at it
+        IsRevealing = false;
+        BeginChase();
+    }
+
+    void BeginChase()
     {
         CurrentPhase = Phase.Chase;
         PhaseTimeLeft = chaseTime;

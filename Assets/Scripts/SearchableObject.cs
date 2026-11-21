@@ -89,9 +89,10 @@ public class SearchableObject : MonoBehaviour
         }
         else if (contents == Contents.Card)
         {
-            player.AddCard(card);
+            CardType? old = player.AddCard(card);
             AudioManager.Play(AudioManager.Sfx.AllKeys);
-            Toast($"Found card: {CardInfo.Name(card)} - {CardInfo.Description(card)}", CardInfo.Tint(card), 4f);
+            string extra = old.HasValue && old.Value != card ? $"  (replaced {CardInfo.Name(old.Value)})" : "";
+            Toast($"Found card: {CardInfo.Name(card)} - {CardInfo.Description(card)}{extra}", CardInfo.Tint(card), 4f);
         }
         else Toast("Nothing but dust.", new Color(0.85f, 0.82f, 0.75f));
     }

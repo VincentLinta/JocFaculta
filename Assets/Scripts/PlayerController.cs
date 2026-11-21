@@ -55,18 +55,31 @@ public class PlayerController : MonoBehaviour
     public HidingSpot AvailableSpot { get; private set; }
     /// <summary>A cabinet / dresser in reach that can be searched with E (only when no hiding spot is in reach), or null.</summary>
     public SearchableObject AvailableSearchable { get; private set; }
+    /// <summary>True while the player runs to the escape exit by himself (no clicking).</summary>
+    public bool IsEscaping => autoEscape;
+    bool autoEscape;
 
-    readonly Dictionary<CardType, int> cards = new Dictionary<CardType, int>();
-    /// <summary>The cards the player holds and how many of each.</summary>
-    public IEnumerable<KeyValuePair<CardType, int>> Cards => cards;
-    public int CardCount(CardType t) => cards.TryGetValue(t, out int n) ? n : 0;
-    public void AddCard(CardType t) { cards[t] = CardCount(t) + 1; }
-    /// <summary>Uses up one card of this type. Returns false if the player has none.</summary>
+    // The player holds ONE card at a time: finding a new card replaces the old one.
+    CardType? heldCard;
+    public CardType? HeldCard => heldCard;
+    /// <summary>The card the player holds (as a list of one, or empty).</summary>
+    public IEnumerable<KeyValuePair<CardType, int>> Cards
+    {
+        get { if (heldCard.HasValue) yield return new KeyValuePair<CardType, int>(heldCard.Value, 1); }
+    }
+    public int CardCount(CardType t) => heldCard.HasValue && heldCard.Value == t ? 1 : 0;
+    /// <summary>Takes a card. Returns the card that was replaced, or null if the hands were empty.</summary>
+    public CardType? AddCard(CardType t)
+    {
+        CardType? old = heldCard;
+        heldCard = t;
+        return old;
+    }
+    /// <summary>Uses up the held card if it is this type. Returns false otherwise.</summary>
     public bool TryUseCard(CardType t)
     {
-        int n = CardCount(t);
-        if (n <= 0) return false;
-        cards[t] = n - 1;
+        if (!heldCard.HasValue || heldCard.Value != t) return false;
+        heldCard = null;
         return true;
     }
 
@@ -136,6 +149,19 @@ public class PlayerController : MonoBehaviour
             grid.ClearHighlights();
             IsRunning = false;
             Stamina = Mathf.Min(maxStamina, Stamina + hiddenRegenRate * Time.deltaTime);
+            return;
+        }
+
+        // Escape run: follow the path to the exit on his own (runs while stamina lasts).
+        if (autoEscape)
+        {
+            grid.ClearHighlights();
+            Move(true);
+            if (path == null)
+            {
+                autoEscape = false;
+                gm.Win("You escaped! The clown was too late.");
+            }
             return;
         }
 
@@ -264,6 +290,7 @@ public class PlayerController : MonoBehaviour
             gm.Win("You escaped! The clown was too late.");
             return;
         }
+        if (autoEscape) return; // already running for the exit
 
         if (IsHidden)
         {
@@ -273,15 +300,59 @@ public class PlayerController : MonoBehaviour
         else if (AvailableSearchable != null) StartCoroutine(SearchAction(AvailableSearchable));
     }
 
-    /// <summary>Q: uses an Escape card. Opens a random exit, the clown rushes the player. Works from a hiding spot too.</summary>
+    /// <summary>
+    /// Q: uses the Escape card. The player leaves his hiding spot (even though it is locked) and runs to the
+    /// open exit by himself, while the clown rushes him.
+    /// </summary>
     public void UseEscapeCard()
     {
         GameManager gm = GameManager.Instance;
-        if (gm == null || !gm.CanPlayerAct || IsBusy || !gm.CanUseEscape || CardCount(CardType.Escape) <= 0) return;
-        if (IsHidden && !TryGetExitTile(CurrentSpot, out Vector2Int _)) return; // the clown blocks the way out
+        if (gm == null || !gm.CanPlayerAct || IsBusy || autoEscape || gm.EscapeActive || gm.IsRevealing) return;
+        if (CardCount(CardType.Escape) <= 0) { EscapeHint("You need an Escape card to escape."); return; }
+        if (!gm.EscapeArmed) { EscapeHint("The escape door opens when the clown starts searching."); return; }
+        if (IsHidden && !TryGetExitTile(CurrentSpot, out Vector2Int _)) { EscapeHint("The clown blocks your way out!"); return; }
+
+        Debug.Log("[Escape] Q pressed: using the Escape card.");
         TryUseCard(CardType.Escape);
+        StartCoroutine(EscapeRun(gm));
         gm.ActivateEscape();
-        if (IsHidden) StartCoroutine(ExitAction()); // breaks the hiding lock: you have to run
+    }
+
+    static void EscapeHint(string message)
+    {
+        Debug.Log("[Escape] " + message);
+        SearchableObject.ShowToast(message, new Color(1f, 0.8f, 0.4f), 2.5f);
+    }
+
+    IEnumerator EscapeRun(GameManager gm)
+    {
+        if (IsHidden) yield return StartCoroutine(ExitAction());
+
+        // Go to the reachable tile that is closest to the open exit.
+        Vector3 door = gm.EscapeDoor.transform.position;
+        Dictionary<Vector2Int, Vector2Int> reach = grid.Reachable(Tile, int.MaxValue);
+        Vector2Int goal = Tile;
+        float best = float.MaxValue;
+        foreach (KeyValuePair<Vector2Int, Vector2Int> kv in reach)
+        {
+            Vector3 c = grid.TileCenter(kv.Key);
+            float d = (c.x - door.x) * (c.x - door.x) + (c.z - door.z) * (c.z - door.z);
+            if (d < best)
+            {
+                best = d;
+                goal = kv.Key;
+            }
+        }
+
+        List<Vector2Int> p = grid.FindPath(Tile, goal);
+        if (p == null)
+        {
+            SearchableObject.ShowToast("No way to the exit!", Color.red, 3f);
+            yield break;
+        }
+        path = p;
+        pathIndex = 0;
+        autoEscape = true;
     }
 
     IEnumerator SearchAction(SearchableObject obj)

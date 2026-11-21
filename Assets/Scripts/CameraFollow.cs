@@ -51,9 +51,25 @@ public class CameraFollow : MonoBehaviour
     Transform currentFocus;
     float switchUntil;
 
+    public static CameraFollow Instance { get; private set; }
+    Transform overrideFocus;
+    float overrideUntil;
+
+    void Awake() { Instance = this; }
+
+    /// <summary>Moves the camera to look at something (e.g. the exit that just opened) for a few seconds.</summary>
+    public void FocusOn(Transform t, float seconds)
+    {
+        overrideFocus = t;
+        overrideUntil = Time.unscaledTime + seconds;
+    }
+
     /// <summary>The player, or the killer while he is hunting.</summary>
     Transform GetFocus()
     {
+        if (overrideFocus != null && Time.unscaledTime < overrideUntil) return overrideFocus;
+        // While the player runs for the exit, watch the player, not the clown.
+        if (GameManager.Instance != null && GameManager.Instance.EscapeActive) return target;
         if (followKillerWhenHunting)
         {
             KillerAI killer = KillerAI.Instance;
@@ -109,7 +125,8 @@ public class CameraFollow : MonoBehaviour
             currentFocus = focus;
             switchUntil = Time.unscaledTime + switchSmoothTime * 1.5f; // slower glide while switching
         }
-        float smooth = Time.unscaledTime < switchUntil ? switchSmoothTime : smoothTime;
+        bool overriding = overrideFocus != null && Time.unscaledTime < overrideUntil;
+        float smooth = overriding ? 0.3f : (Time.unscaledTime < switchUntil ? switchSmoothTime : smoothTime);
         followPoint = Vector3.SmoothDamp(followPoint, focus.position, ref followVelocity, smooth);
         ApplyTransform();
     }

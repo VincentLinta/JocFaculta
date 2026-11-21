@@ -17,6 +17,10 @@ public class SearchableSpawner : MonoBehaviour
     public float drinkChance = 0.3f;
     [Tooltip("Minimum distance between two objects, in tiles.")]
     public int minSpacing = 4;
+    [Header("Escape doors")]
+    [Tooltip("How many escape doors are put on the map (the Escape card opens one of them).")]
+    public int doorCount = 5;
+    public int doorSpacing = 6;
 
     static readonly Vector2Int[] Dirs = { Vector2Int.up, Vector2Int.right, Vector2Int.down, Vector2Int.left };
 
@@ -76,6 +80,80 @@ public class SearchableSpawner : MonoBehaviour
             Place(grid, c.Key, c.Value, card, forced);
         }
         Debug.Log($"[Searchables] Placed {used.Count} searchable objects.");
+        SpawnDoors(grid, candidates, used);
+    }
+
+    // ------------------------------------------------------------------ escape doors
+
+    void SpawnDoors(GridManager grid, List<KeyValuePair<Vector2Int, Vector2Int>> candidates, List<Vector2Int> cabinetTiles)
+    {
+        var doorTiles = new List<Vector2Int>();
+        foreach (var c in candidates) // already shuffled
+        {
+            if (doorTiles.Count >= doorCount) break;
+            bool bad = false;
+            foreach (Vector2Int u in cabinetTiles)
+                if (GridManager.Chebyshev(u, c.Key) < 2) { bad = true; break; }
+            if (!bad)
+                foreach (Vector2Int u in doorTiles)
+                    if (GridManager.Chebyshev(u, c.Key) < doorSpacing) { bad = true; break; }
+            if (bad) continue;
+            doorTiles.Add(c.Key);
+            PlaceDoor(grid, c.Key, c.Value);
+        }
+        Debug.Log($"[EscapeDoors] Placed {doorTiles.Count} escape doors.");
+    }
+
+    void PlaceDoor(GridManager grid, Vector2Int tile, Vector2Int wallDir)
+    {
+        var go = new GameObject("EscapeDoor");
+        go.transform.SetParent(transform, false);
+        Vector3 dir = new Vector3(wallDir.x, 0f, wallDir.y);
+        go.transform.position = grid.TileCenter(tile) + dir * (grid.tileSize * 0.5f - 0.3f);
+        go.transform.rotation = Quaternion.LookRotation(-dir); // front faces the room
+
+        Material frame = Mat(new Color(0.12f, 0.12f, 0.14f), false);
+        MakeBox("FrameL", go.transform, new Vector3(-0.62f, 1.15f, 0f), new Vector3(0.14f, 2.3f, 0.22f), frame);
+        MakeBox("FrameR", go.transform, new Vector3(0.62f, 1.15f, 0f), new Vector3(0.14f, 2.3f, 0.22f), frame);
+        MakeBox("FrameTop", go.transform, new Vector3(0f, 2.3f, 0f), new Vector3(1.38f, 0.14f, 0.22f), frame);
+        Transform panelT = MakeBox("Panel", go.transform, new Vector3(0f, 1.12f, 0.02f), new Vector3(1.1f, 2.15f, 0.06f), Mat(new Color(0.22f, 0.04f, 0.04f), true));
+
+        var lg = new GameObject("DoorLight");
+        lg.transform.SetParent(go.transform, false);
+        lg.transform.localPosition = new Vector3(0f, 1.4f, 1.0f);
+        Light l = lg.AddComponent<Light>();
+        l.type = LightType.Point;
+        l.range = 7f;
+        l.intensity = 2.2f;
+        l.shadows = LightShadows.None;
+        l.enabled = false;
+
+        var door = go.AddComponent<ExitDoor>();
+        door.isEscapeDoor = true;
+        door.doorLight = l;
+        door.panel = panelT.GetComponent<Renderer>();
+    }
+
+    static Material Mat(Color c, bool unlit)
+    {
+        Shader s = unlit ? Shader.Find("Universal Render Pipeline/Unlit") : Shader.Find("Universal Render Pipeline/Lit");
+        if (s == null) s = Shader.Find(unlit ? "Unlit/Color" : "Standard");
+        var m = new Material(s);
+        m.color = c;
+        if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", c);
+        return m;
+    }
+
+    static Transform MakeBox(string name, Transform parent, Vector3 pos, Vector3 scale, Material mat)
+    {
+        GameObject b = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        b.name = name;
+        b.transform.SetParent(parent, false);
+        b.transform.localPosition = pos;
+        b.transform.localScale = scale;
+        b.GetComponent<Renderer>().sharedMaterial = mat;
+        Destroy(b.GetComponent<Collider>());
+        return b.transform;
     }
 
     static bool NearHidingSpot(Vector2Int t)

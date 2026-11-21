@@ -20,7 +20,7 @@ public static class CardInfo
         switch (t)
         {
             case CardType.Fortify: return "the clown searches your hiding spot much slower";
-            case CardType.Escape: return "opens a random exit, but the clown rushes you (Q to use)";
+            case CardType.Escape: return "opens a random exit when you hide; Q = run to it, but the clown rushes you";
             default: return "";
         }
     }
