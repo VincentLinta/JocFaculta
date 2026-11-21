@@ -24,6 +24,8 @@ public class ExitDoor : MonoBehaviour
     public Light doorLight;
     [Tooltip("Escape doors are spawned by SearchableSpawner. Only the one opened by the Escape card glows.")]
     public bool isEscapeDoor;
+    [Tooltip("The escape point is a window (dark blue glass when closed).")]
+    public bool isWindow;
     [Tooltip("Glowing panel of an escape door.")]
     public Renderer panel;
     public Color lockedColor = new Color(1f, 0.15f, 0.1f);
@@ -74,7 +76,7 @@ public class ExitDoor : MonoBehaviour
             if (panelMat == null) panelMat = panel.material;
             Color c = open
                 ? Color.Lerp(openColor * 0.7f, openColor, 0.5f + 0.5f * Mathf.Sin(Time.time * 5f))
-                : new Color(0.22f, 0.04f, 0.04f);
+                : (isWindow ? new Color(0.04f, 0.07f, 0.11f) : new Color(0.22f, 0.04f, 0.04f));
             c.a = 1f;
             panelMat.color = c;
             if (panelMat.HasProperty("_BaseColor")) panelMat.SetColor("_BaseColor", c);

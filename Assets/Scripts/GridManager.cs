@@ -55,6 +55,7 @@ public class GridManager : MonoBehaviour
     void Awake()
     {
         Instance = this;
+        PropCleaner.Apply(); // remove props that block a room (must happen before the scan)
         Physics.SyncTransforms();
         ScanTiles();
         BuildVisuals();

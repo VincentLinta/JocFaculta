@@ -18,8 +18,10 @@ public class SearchableSpawner : MonoBehaviour
     [Tooltip("Minimum distance between two objects, in tiles.")]
     public int minSpacing = 4;
     [Header("Escape doors")]
-    [Tooltip("How many escape doors are put on the map (the Escape card opens one of them).")]
-    public int doorCount = 5;
+    [Tooltip("How many escape points (doors and windows) are put on the outer walls. The Escape card opens one of them.")]
+    public int doorCount = 6;
+    [Tooltip("Chance (0-1) that an escape point is a window instead of a door.")]
+    public float windowChance = 0.4f;
     public int doorSpacing = 6;
 
     static readonly Vector2Int[] Dirs = { Vector2Int.up, Vector2Int.right, Vector2Int.down, Vector2Int.left };
@@ -91,7 +93,11 @@ public class SearchableSpawner : MonoBehaviour
         foreach (var c in candidates) // already shuffled
         {
             if (doorTiles.Count >= doorCount) break;
+            // Only on the outer walls of the map: the tile behind the wall lies outside the grid.
+            if (grid.InBounds(c.Key + c.Value)) continue;
             bool bad = false;
+            foreach (ExitDoor e in ExitDoor.All) // keep clear of the old exits
+                if (!e.isEscapeDoor && GridManager.Chebyshev(grid.WorldToTile(e.transform.position), c.Key) < 2) { bad = true; break; }
             foreach (Vector2Int u in cabinetTiles)
                 if (GridManager.Chebyshev(u, c.Key) < 2) { bad = true; break; }
             if (!bad)
@@ -99,24 +105,39 @@ public class SearchableSpawner : MonoBehaviour
                     if (GridManager.Chebyshev(u, c.Key) < doorSpacing) { bad = true; break; }
             if (bad) continue;
             doorTiles.Add(c.Key);
-            PlaceDoor(grid, c.Key, c.Value);
+            PlaceDoor(grid, c.Key, c.Value, Random.value < windowChance);
         }
-        Debug.Log($"[EscapeDoors] Placed {doorTiles.Count} escape doors.");
+        Debug.Log($"[EscapeDoors] Placed {doorTiles.Count} escape doors/windows on the outer walls.");
     }
 
-    void PlaceDoor(GridManager grid, Vector2Int tile, Vector2Int wallDir)
+    void PlaceDoor(GridManager grid, Vector2Int tile, Vector2Int wallDir, bool window)
     {
-        var go = new GameObject("EscapeDoor");
+        var go = new GameObject(window ? "EscapeWindow" : "EscapeDoor");
         go.transform.SetParent(transform, false);
         Vector3 dir = new Vector3(wallDir.x, 0f, wallDir.y);
         go.transform.position = grid.TileCenter(tile) + dir * (grid.tileSize * 0.5f - 0.3f);
         go.transform.rotation = Quaternion.LookRotation(-dir); // front faces the room
 
         Material frame = Mat(new Color(0.12f, 0.12f, 0.14f), false);
-        MakeBox("FrameL", go.transform, new Vector3(-0.62f, 1.15f, 0f), new Vector3(0.14f, 2.3f, 0.22f), frame);
-        MakeBox("FrameR", go.transform, new Vector3(0.62f, 1.15f, 0f), new Vector3(0.14f, 2.3f, 0.22f), frame);
-        MakeBox("FrameTop", go.transform, new Vector3(0f, 2.3f, 0f), new Vector3(1.38f, 0.14f, 0.22f), frame);
-        Transform panelT = MakeBox("Panel", go.transform, new Vector3(0f, 1.12f, 0.02f), new Vector3(1.1f, 2.15f, 0.06f), Mat(new Color(0.22f, 0.04f, 0.04f), true));
+        Transform panelT;
+        if (window)
+        {
+            // A window: a glass pane in a frame, with a sill.
+            MakeBox("FrameL", go.transform, new Vector3(-0.62f, 1.5f, 0f), new Vector3(0.14f, 1.3f, 0.22f), frame);
+            MakeBox("FrameR", go.transform, new Vector3(0.62f, 1.5f, 0f), new Vector3(0.14f, 1.3f, 0.22f), frame);
+            MakeBox("FrameTop", go.transform, new Vector3(0f, 2.2f, 0f), new Vector3(1.38f, 0.14f, 0.22f), frame);
+            MakeBox("FrameBottom", go.transform, new Vector3(0f, 0.85f, 0.03f), new Vector3(1.5f, 0.14f, 0.34f), frame);
+            panelT = MakeBox("Panel", go.transform, new Vector3(0f, 1.52f, 0.02f), new Vector3(1.1f, 1.2f, 0.05f), Mat(new Color(0.04f, 0.07f, 0.11f), true));
+            MakeBox("BarV", go.transform, new Vector3(0f, 1.52f, 0.06f), new Vector3(0.05f, 1.2f, 0.04f), frame);
+            MakeBox("BarH", go.transform, new Vector3(0f, 1.52f, 0.06f), new Vector3(1.1f, 0.05f, 0.04f), frame);
+        }
+        else
+        {
+            MakeBox("FrameL", go.transform, new Vector3(-0.62f, 1.15f, 0f), new Vector3(0.14f, 2.3f, 0.22f), frame);
+            MakeBox("FrameR", go.transform, new Vector3(0.62f, 1.15f, 0f), new Vector3(0.14f, 2.3f, 0.22f), frame);
+            MakeBox("FrameTop", go.transform, new Vector3(0f, 2.3f, 0f), new Vector3(1.38f, 0.14f, 0.22f), frame);
+            panelT = MakeBox("Panel", go.transform, new Vector3(0f, 1.12f, 0.02f), new Vector3(1.1f, 2.15f, 0.06f), Mat(new Color(0.22f, 0.04f, 0.04f), true));
+        }
 
         var lg = new GameObject("DoorLight");
         lg.transform.SetParent(go.transform, false);
@@ -130,6 +151,7 @@ public class SearchableSpawner : MonoBehaviour
 
         var door = go.AddComponent<ExitDoor>();
         door.isEscapeDoor = true;
+        door.isWindow = window;
         door.doorLight = l;
         door.panel = panelT.GetComponent<Renderer>();
     }
