@@ -53,6 +53,8 @@ public class PlayerController : MonoBehaviour
     public HidingSpot CurrentSpot { get; private set; }
     /// <summary>A free hiding spot on or next to the player's tile, or null.</summary>
     public HidingSpot AvailableSpot { get; private set; }
+    /// <summary>A cabinet / dresser in reach that can be searched with E (only when no hiding spot is in reach), or null.</summary>
+    public SearchableObject AvailableSearchable { get; private set; }
 
     GridManager grid;
     Camera cam;
@@ -80,6 +82,8 @@ public class PlayerController : MonoBehaviour
     {
         cam = Camera.main;
         grid = GridManager.Instance;
+        if (FindFirstObjectByType<SearchableSpawner>() == null)
+            new GameObject("Searchables").AddComponent<SearchableSpawner>(); // cabinets to search with E
         Tile = grid.NearestWalkable(grid.WorldToTile(transform.position));
         transform.position = TilePosition(Tile);
     }
@@ -91,6 +95,7 @@ public class PlayerController : MonoBehaviour
         if (grid == null) return;
         GameManager gm = GameManager.Instance;
         AvailableSpot = IsHidden ? null : FindSpot();
+        AvailableSearchable = (IsHidden || AvailableSpot != null) ? null : FindSearchable();
 
         bool canAct = gm != null && gm.CanPlayerAct && !IsBusy;
         if (!canAct)
@@ -238,6 +243,47 @@ public class PlayerController : MonoBehaviour
             if (!lockInHidingSpot) StartCoroutine(ExitAction());
         }
         else if (AvailableSpot != null) StartCoroutine(EnterAction(AvailableSpot));
+        else if (AvailableSearchable != null) StartCoroutine(SearchAction(AvailableSearchable));
+    }
+
+    IEnumerator SearchAction(SearchableObject obj)
+    {
+        IsBusy = true;
+        IsRunning = false;
+        path = null;
+        grid.ClearHighlights();
+
+        // Turn towards the object, then stand still while searching.
+        Vector3 look = obj.transform.position - transform.position;
+        look.y = 0f;
+        if (look.sqrMagnitude > 0.01f)
+            yield return MoveTo(transform.position, Quaternion.LookRotation(look), 0.2f);
+        yield return obj.SearchRoutine(this);
+        IsBusy = false;
+    }
+
+    /// <summary>Adds stamina (used by items found in cabinets).</summary>
+    public void RestoreStamina(float amount)
+    {
+        Stamina = Mathf.Min(maxStamina, Stamina + amount);
+        exhausted = false;
+    }
+
+    SearchableObject FindSearchable()
+    {
+        SearchableObject best = null;
+        float bestDist = float.MaxValue;
+        foreach (SearchableObject o in SearchableObject.All)
+        {
+            if (o.IsSearched || !o.IsInReach(Tile, grid)) continue;
+            float d = Vector3.Distance(transform.position, o.transform.position);
+            if (d < bestDist)
+            {
+                bestDist = d;
+                best = o;
+            }
+        }
+        return best;
     }
 
     IEnumerator EnterAction(HidingSpot spot)

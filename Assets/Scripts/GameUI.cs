@@ -31,6 +31,7 @@ public class GameUI : MonoBehaviour
     readonly Image[] staminaSegments = new Image[4];
     Text keysText;
     Text promptText;
+    Text toastText;
     Text dangerText;
     Text phaseText;
     Text phaseBanner;
@@ -116,15 +117,19 @@ public class GameUI : MonoBehaviour
             }
             else hideStatus.text = "";
 
-            hideButton.interactable = canAct && ((player.IsHidden && !player.IsLockedIn) || (!player.IsHidden && player.AvailableSpot != null));
+            bool canUse = player.AvailableSpot != null || player.AvailableSearchable != null;
+            hideButton.interactable = canAct && ((player.IsHidden && !player.IsLockedIn) || (!player.IsHidden && canUse));
             // Brighter HIDE button while a spot is in reach (matches the outline).
-            hideButton.image.color = canAct && !player.IsHidden && player.AvailableSpot != null ? HideReadyColor : ButtonColor;
-            hideLabel.text = player.IsHidden ? (player.IsLockedIn ? "HIDDEN" : "EXIT (E)") : "HIDE (E)";
+            hideButton.image.color = canAct && !player.IsHidden && canUse ? HideReadyColor : ButtonColor;
+            hideLabel.text = player.IsHidden ? (player.IsLockedIn ? "HIDDEN" : "EXIT (E)") : (player.AvailableSpot == null && player.AvailableSearchable != null ? "SEARCH (E)" : "HIDE (E)");
         }
 
         keysText.enabled = gm.useKeysAndExits;
         keysText.text = $"KEYS {gm.Keys}/{gm.keysRequired}";
         promptText.text = GetPrompt(gm, player, canAct);
+        bool toast = Time.time < SearchableObject.ToastUntil && !string.IsNullOrEmpty(SearchableObject.ToastText);
+        toastText.text = toast ? SearchableObject.ToastText : "";
+        toastText.color = SearchableObject.ToastColor;
         UpdatePhaseHud(gm, killer);
 
         // Danger indicator + red vignette.
@@ -343,6 +348,7 @@ public class GameUI : MonoBehaviour
         bool hiding = gm.CurrentPhase == GameManager.Phase.Hiding;
         if (player.IsHidden) return hiding ? "Hidden - wait for the clown" : (player.IsLockedIn ? "Hidden - stay quiet and hope he misses you" : "Hidden - stay quiet (E to leave)");
         if (player.AvailableSpot) return "Press E to hide";
+        if (player.AvailableSearchable) return "Press E to search";
         return hiding ? "Click to walk, hold Space to run - find a hiding spot" : "Stay out of his sight - hide!";
     }
 
@@ -394,12 +400,15 @@ public class GameUI : MonoBehaviour
         Place(checkedText.rectTransform, new Vector2(0f, 1f), new Vector2(40f, -90f), new Vector2(500f, 34f));
         checkedText.enabled = false;
 
-        Text controls = MakeText("Controls", root, "Click: walk | Space/Shift: run | E: hide | Right mouse + drag: camera | Wheel: zoom", 20, TextAnchor.MiddleCenter);
+        Text controls = MakeText("Controls", root, "Click: walk | Space/Shift: run | E: hide / search | Right mouse + drag: camera | Wheel: zoom", 20, TextAnchor.MiddleCenter);
         Place(controls.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 12f), new Vector2(1400f, 28f));
         controls.color = new Color(0.9f, 0.88f, 0.82f, 0.55f);
 
         promptText = MakeText("Prompt", root, "", 30, TextAnchor.MiddleCenter);
         Place(promptText.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 130f), new Vector2(1000f, 50f));
+
+        toastText = MakeText("Toast", root, "", 30, TextAnchor.MiddleCenter);
+        Place(toastText.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 190f), new Vector2(1000f, 50f));
 
         dangerText = MakeText("Danger", root, "! DANGER !", 52, TextAnchor.MiddleCenter);
         Place(dangerText.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -50f), new Vector2(700f, 80f));
