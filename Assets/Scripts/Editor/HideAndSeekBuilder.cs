@@ -1275,6 +1275,7 @@ public static class HideAndSeekBuilder
         }
 
         v.gameObject.AddComponent<KillerBob>();
+        v.gameObject.AddComponent<KillerWalkAnimator>();
     }
 
     // ======================================================================

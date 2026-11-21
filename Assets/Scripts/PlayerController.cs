@@ -36,6 +36,10 @@ public class PlayerController : MonoBehaviour
 
     [Header("Hiding")]
     public float hideMoveTime = 0.35f;
+    [Tooltip("If on, once the player is hidden he can never leave the hiding spot.")]
+    public bool lockInHidingSpot = true;
+    /// <summary>True when the player is hidden and not allowed to leave.</summary>
+    public bool IsLockedIn => IsHidden && lockInHidingSpot;
 
     /// <summary>The tile the player stands on (the spot's tile while hidden).</summary>
     public Vector2Int Tile { get; private set; }
@@ -229,7 +233,10 @@ public class PlayerController : MonoBehaviour
     {
         GameManager gm = GameManager.Instance;
         if (gm == null || !gm.CanPlayerAct || IsBusy) return;
-        if (IsHidden) StartCoroutine(ExitAction());
+        if (IsHidden)
+        {
+            if (!lockInHidingSpot) StartCoroutine(ExitAction());
+        }
         else if (AvailableSpot != null) StartCoroutine(EnterAction(AvailableSpot));
     }
 

@@ -116,10 +116,10 @@ public class GameUI : MonoBehaviour
             }
             else hideStatus.text = "";
 
-            hideButton.interactable = canAct && (player.IsHidden || player.AvailableSpot != null);
+            hideButton.interactable = canAct && ((player.IsHidden && !player.IsLockedIn) || (!player.IsHidden && player.AvailableSpot != null));
             // Brighter HIDE button while a spot is in reach (matches the outline).
             hideButton.image.color = canAct && !player.IsHidden && player.AvailableSpot != null ? HideReadyColor : ButtonColor;
-            hideLabel.text = player.IsHidden ? "EXIT (E)" : "HIDE (E)";
+            hideLabel.text = player.IsHidden ? (player.IsLockedIn ? "HIDDEN" : "EXIT (E)") : "HIDE (E)";
         }
 
         keysText.enabled = gm.useKeysAndExits;
@@ -341,7 +341,7 @@ public class GameUI : MonoBehaviour
     {
         if (!gm.IsPlaying || player == null || !canAct) return "";
         bool hiding = gm.CurrentPhase == GameManager.Phase.Hiding;
-        if (player.IsHidden) return hiding ? "Hidden - wait for the clown" : "Hidden - stay quiet (E to leave)";
+        if (player.IsHidden) return hiding ? "Hidden - wait for the clown" : (player.IsLockedIn ? "Hidden - stay quiet and hope he misses you" : "Hidden - stay quiet (E to leave)");
         if (player.AvailableSpot) return "Press E to hide";
         return hiding ? "Click to walk, hold Space to run - find a hiding spot" : "Stay out of his sight - hide!";
     }

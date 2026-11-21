@@ -81,6 +81,8 @@ public class KillerAI : MonoBehaviour
     Light[] lights;
     Transform armPivot;
     float armAngle;
+    /// <summary>Set by KillerWalkAnimator: right arm swing (degrees) added while the arm is down.</summary>
+    [System.NonSerialized] public float WalkArmSwing;
 
     bool hunting;
     readonly List<HidingSpot> queue = new List<HidingSpot>();
@@ -110,6 +112,11 @@ public class KillerAI : MonoBehaviour
         renderers = GetComponentsInChildren<Renderer>(true);
         lights = GetComponentsInChildren<Light>(true);
         SetupArm();
+
+        // Walk animation is added automatically, no manual setup needed.
+        Transform vis = transform.Find("Visual");
+        if (vis != null && vis.GetComponent<KillerWalkAnimator>() == null)
+            vis.gameObject.AddComponent<KillerWalkAnimator>();
 
         // Not in the level until the chase phase starts: invisible and parked under the map.
         SetVisible(false);
@@ -415,7 +422,8 @@ public class KillerAI : MonoBehaviour
         armAngle = Mathf.MoveTowards(armAngle, target, 420f * dt);
         // Small searching wobble once the hand is up.
         float wobble = raised && Mathf.Abs(armAngle - target) < 1f ? Mathf.Sin(Time.time * 10f) * 9f : 0f;
-        armPivot.localRotation = Quaternion.Euler(armAngle + wobble, 0f, 0f);
+        float walk = raised ? 0f : WalkArmSwing * Mathf.Clamp01(1f - Mathf.Abs(armAngle) / 20f);
+        armPivot.localRotation = Quaternion.Euler(armAngle + wobble + walk, 0f, 0f);
     }
 
     // ------------------------------------------------------------------ senses / rules

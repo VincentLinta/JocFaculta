@@ -7,6 +7,10 @@ public class KillerBob : MonoBehaviour
     public float bobSpeed = 2.2f;
     public float swayAngle = 3f;
 
+    // Set by KillerWalkAnimator.
+    [System.NonSerialized] public float walkBounce;
+    [System.NonSerialized] public float walkLean;
+
     Vector3 basePosition;
     Quaternion baseRotation;
     float seed;
@@ -21,7 +25,7 @@ public class KillerBob : MonoBehaviour
     void Update()
     {
         float t = Time.time * bobSpeed + seed; // Time.time stops while timeScale is 0
-        transform.localPosition = basePosition + Vector3.up * (Mathf.Sin(t) * bobHeight);
-        transform.localRotation = baseRotation * Quaternion.Euler(0f, 0f, Mathf.Sin(t * 0.5f) * swayAngle);
+        transform.localPosition = basePosition + Vector3.up * (Mathf.Sin(t) * bobHeight + walkBounce);
+        transform.localRotation = baseRotation * Quaternion.Euler(walkLean, 0f, Mathf.Sin(t * 0.5f) * swayAngle);
     }
 }
