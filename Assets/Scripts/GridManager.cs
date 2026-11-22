@@ -57,6 +57,7 @@ public class GridManager : MonoBehaviour
         Instance = this;
         DayLight.Apply(); // night -> day
         PropCleaner.Apply(); // remove props that block a room (must happen before the scan)
+        LevelTweaks.Apply(); // loose clutter out, garage gate + car (must happen before the scan)
         Physics.SyncTransforms();
         ScanTiles();
         BuildVisuals();

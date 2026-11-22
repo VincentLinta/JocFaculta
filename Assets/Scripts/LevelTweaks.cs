@@ -1,0 +1,142 @@
+using UnityEngine;
+
+/// <summary>
+/// Small changes to the finished level, applied at runtime before the walking grid is scanned
+/// (called from GridManager.Awake right after PropCleaner):
+///  1) takes out loose clutter that can not be used (crates, barrels, boxes, chairs ...) so rooms are easy to cross,
+///  2) turns the car room into a garage: a big garage gate on the north wall, the car parked facing it.
+/// Hiding-spot props are never touched. To remove or keep other props edit <see cref="ClutterExact"/> / <see cref="ClutterPrefix"/>.
+/// </summary>
+public static class LevelTweaks
+{
+    /// <summary>Props whose name is exactly one of these are removed.</summary>
+    static readonly string[] ClutterExact =
+    {
+        "CardboardBoxes", "Box", "Box_Open", "BrokenChair", "TrashPile", "Tire", "Pallet", "Plank",
+        "Bookcase_Fallen", "FileCabinet_Fallen", "Dresser_Tipped", "Bench_Fallen", "SmallTable", "Mattress",
+    };
+
+    /// <summary>Props whose name starts with one of these are removed.</summary>
+    static readonly string[] ClutterPrefix = { "Crate", "Barrel", "OilBarrel" };
+
+    /// <summary>Center of the garage gate on the floor (zero until the gate exists).</summary>
+    public static Vector3 GateCenter { get; private set; }
+    public static bool HasGate { get; private set; }
+
+    /// <summary>True when a point is in front of the garage gate (keeps cabinets and windows off it).</summary>
+    public static bool NearGate(Vector3 p, float radius = 3.6f)
+    {
+        if (!HasGate) return false;
+        Vector3 d = p - GateCenter;
+        d.y = 0f;
+        return d.magnitude < radius;
+    }
+
+    public static void Apply()
+    {
+        HasGate = false;
+        RemoveClutter();
+        BuildGarage();
+    }
+
+    // ------------------------------------------------------------------ 1) clutter
+
+    static bool IsClutter(string n)
+    {
+        foreach (string s in ClutterExact) if (n == s) return true;
+        foreach (string s in ClutterPrefix) if (n.StartsWith(s)) return true;
+        return false;
+    }
+
+    static void RemoveClutter()
+    {
+        int removed = 0;
+        foreach (Transform t in Object.FindObjectsByType<Transform>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        {
+            if (!IsClutter(t.name)) continue;
+            if (t.GetComponentInParent<HidingSpot>() != null) continue;   // hiding spots stay
+            if (t.GetComponentInParent<SearchableObject>() != null) continue;
+            t.gameObject.SetActive(false);
+            removed++;
+        }
+        Debug.Log($"[LevelTweaks] Removed {removed} loose props.");
+    }
+
+    // ------------------------------------------------------------------ 2) garage
+
+    static Material Mat(Color c, bool unlit)
+    {
+        Shader s = Shader.Find(unlit ? "Universal Render Pipeline/Unlit" : "Universal Render Pipeline/Lit");
+        if (s == null) s = Shader.Find(unlit ? "Unlit/Color" : "Standard");
+        var m = new Material(s);
+        m.color = c;
+        if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", c);
+        if (!unlit && m.HasProperty("_Smoothness")) m.SetFloat("_Smoothness", 0.35f);
+        return m;
+    }
+
+    static void Box(string name, Transform parent, Vector3 pos, Vector3 scale, Material mat)
+    {
+        GameObject b = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        b.name = name;
+        b.transform.SetParent(parent, false);
+        b.transform.position = pos;
+        b.transform.localScale = scale;
+        b.GetComponent<Renderer>().sharedMaterial = mat;
+        Object.Destroy(b.GetComponent<Collider>()); // decoration only, never blocks the grid
+    }
+
+    static void BuildGarage()
+    {
+        GameObject carGO = GameObject.Find("OldCar");
+        if (carGO == null) { Debug.Log("[LevelTweaks] No OldCar found, garage skipped."); return; }
+        Transform car = carGO.transform;
+
+        // The wall the gate goes on: the north wall of the wing (inner face).
+        float faceZ = 29.85f;
+        GameObject wall = GameObject.Find("Wall_WingNorth");
+        if (wall != null)
+        {
+            Renderer[] rs = wall.GetComponentsInChildren<Renderer>();
+            if (rs.Length > 0)
+            {
+                Bounds b = rs[0].bounds;
+                foreach (Renderer r in rs) b.Encapsulate(r.bounds);
+                faceZ = b.center.z - b.extents.z; // south face = inside the wing
+            }
+        }
+
+        // Gate straight in front of the car, the car's front (the open hood, local +X) points at it.
+        float gx = car.position.x;
+        car.rotation = Quaternion.Euler(0f, -90f, 0f);
+
+        Material metal = Mat(new Color(0.46f, 0.48f, 0.5f), false);
+        Material dark = Mat(new Color(0.13f, 0.13f, 0.15f), false);
+        Material stripe = Mat(new Color(0.9f, 0.72f, 0.1f), false);
+        Material daylight = Mat(new Color(1f, 0.96f, 0.8f), true);
+
+        var root = new GameObject("GarageGate").transform;
+        float z = faceZ - 0.07f; // just in front of the wall
+        const float width = 3.8f, height = 2.3f;
+
+        // Frame.
+        Box("PostL", root, new Vector3(gx - width / 2f - 0.12f, height / 2f, z), new Vector3(0.24f, height, 0.2f), dark);
+        Box("PostR", root, new Vector3(gx + width / 2f + 0.12f, height / 2f, z), new Vector3(0.24f, height, 0.2f), dark);
+        Box("Header", root, new Vector3(gx, height + 0.1f, z), new Vector3(width + 0.5f, 0.22f, 0.22f), dark);
+
+        // Roll-up door: stacked slats with thin dark gaps between them.
+        const int slats = 5;
+        float slatH = (height - 0.12f) / slats;
+        for (int i = 0; i < slats; i++)
+            Box("Slat" + i, root, new Vector3(gx, 0.12f + slatH * (i + 0.5f), z + 0.02f), new Vector3(width, slatH - 0.04f, 0.1f), metal);
+        Box("Handle", root, new Vector3(gx, 0.45f, z - 0.06f), new Vector3(0.5f, 0.07f, 0.06f), dark);
+
+        // Hazard stripe along the bottom and daylight leaking under the door.
+        Box("Stripe", root, new Vector3(gx, 0.1f, z - 0.01f), new Vector3(width, 0.08f, 0.12f), stripe);
+        Box("DaylightGap", root, new Vector3(gx, 0.03f, z + 0.03f), new Vector3(width, 0.06f, 0.06f), daylight);
+
+        GateCenter = new Vector3(gx, 0f, z);
+        HasGate = true;
+        Debug.Log($"[LevelTweaks] Garage gate at x={gx:0.0}, z={z:0.00}; car turned to face it.");
+    }
+}

@@ -65,6 +65,7 @@ public class SearchableSpawner : MonoBehaviour
                 if (!grid.IsWalkable(t)) continue;
                 if (player != null && GridManager.Chebyshev(t, player.Tile) <= 1) continue;
                 if (NearHidingSpot(t)) continue;
+                if (LevelTweaks.NearGate(grid.TileCenter(t))) continue; // the garage gate sits on this wall
                 foreach (Vector2Int d in Dirs)
                 {
                     Vector2Int n = t + d;
@@ -124,7 +125,7 @@ public class SearchableSpawner : MonoBehaviour
             if (doorTiles.Count >= doorCount) break;
             // Only on the outer walls of the map: the tile behind the wall lies outside the grid.
             if (grid.InBounds(c.Key + c.Value)) continue;
-            bool bad = false;
+            bool bad = LevelTweaks.NearGate(grid.TileCenter(c.Key), 4.5f);
             foreach (ExitDoor e in ExitDoor.All) // keep clear of the old exits
                 if (!e.isEscapeDoor && GridManager.Chebyshev(grid.WorldToTile(e.transform.position), c.Key) < 2) { bad = true; break; }
             foreach (Vector2Int u in cabinetTiles)
@@ -189,7 +190,7 @@ public class SearchableSpawner : MonoBehaviour
         {
             if (tiles.Count >= lightWindowCount) break;
             if (grid.InBounds(c.Key + c.Value)) continue; // outer walls only
-            bool bad = false;
+            bool bad = LevelTweaks.NearGate(grid.TileCenter(c.Key), 4.5f);
             foreach (ExitDoor e in ExitDoor.All)
                 if (!e.isEscapeDoor && GridManager.Chebyshev(grid.WorldToTile(e.transform.position), c.Key) < 2) { bad = true; break; }
             if (!bad) foreach (Vector2Int u in cabinetTiles) if (GridManager.Chebyshev(u, c.Key) < 2) { bad = true; break; }

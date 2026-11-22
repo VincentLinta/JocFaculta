@@ -41,6 +41,8 @@ public class KillerAI : MonoBehaviour
     [Range(0f, 1f)] public float fightBackChance = 0.5f;
     [Tooltip("Escape card: the clown runs at this many times the player's walk speed.")]
     public float escapeSpeedMultiplier = 2f;
+    [Tooltip("Escape card: he is never slower than the player's RUN speed times this (1.1 = a bit faster than running).")]
+    public float escapeMinRunFactor = 1.1f;
     [Tooltip("How far the raised hand goes up (degrees).")]
     public float raiseAngle = 105f;
 
@@ -238,7 +240,7 @@ public class KillerAI : MonoBehaviour
 
     void UpdateEscapeChase(float dt)
     {
-        float speed = player.walkSpeed * escapeSpeedMultiplier;
+        float speed = Mathf.Max(player.walkSpeed * escapeSpeedMultiplier, player.runSpeed * escapeMinRunFactor);
         repathTimer -= dt;
         if (repathTimer <= 0f || path == null)
         {
