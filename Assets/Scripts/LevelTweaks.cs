@@ -171,6 +171,15 @@ public static class LevelTweaks
         if (carGO == null) { Debug.Log("[LevelTweaks] No OldCar found, garage skipped."); return; }
         Transform car = carGO.transform;
 
+        // The hood lies flat on the car (it used to stand open, tilted up).
+        foreach (Transform t in car.GetComponentsInChildren<Transform>(true))
+        {
+            if (t.name != "Hood_Open" && t.name != "Hood") continue;
+            t.localRotation = Quaternion.identity;
+            t.localPosition = new Vector3(1.55f, 1.03f, 0f);
+            t.localScale = new Vector3(0.7f, 0.05f, 1.6f);
+        }
+
         // The wall the gate goes on: the north wall of the wing (inner face).
         float faceZ = 29.85f;
         GameObject wall = GameObject.Find("Wall_WingNorth");
@@ -208,6 +217,9 @@ public static class LevelTweaks
         float slatH = (height - 0.12f) / slats;
         for (int i = 0; i < slats; i++)
             Box("Slat" + i, root, new Vector3(gx, 0.12f + slatH * (i + 0.5f), z + 0.02f), new Vector3(width, slatH - 0.04f, 0.1f), metal);
+        // Daylight behind the slats: only switched on while the car drives out (CarEscape).
+        Box("Outside", root, new Vector3(gx, 0.12f + (height - 0.12f) / 2f, z + 0.06f), new Vector3(width, height - 0.12f, 0.02f), daylight);
+        root.Find("Outside").gameObject.SetActive(false);
         Box("Handle", root, new Vector3(gx, 0.45f, z - 0.06f), new Vector3(0.5f, 0.07f, 0.06f), dark);
 
         // Hazard stripe along the bottom and daylight leaking under the door.

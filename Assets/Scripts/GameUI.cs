@@ -161,9 +161,11 @@ public class GameUI : MonoBehaviour
                 if (kv.Value > 0)
                 {
                     string hex = ColorUtility.ToHtmlStringRGB(CardInfo.Tint(kv.Key));
-                    string key = kv.Key == CardType.Escape && gm.CanUseEscape ? "  [Q]" : (kv.Key == CardType.Decoy || kv.Key == CardType.Girlfriend ? "  [F]" : (kv.Key == CardType.Flashbang ? "  [G]" : ""));
+                    string key = kv.Key == CardType.Escape && gm.CanUseEscape ? "  [Q]" : (kv.Key == CardType.Decoy || kv.Key == CardType.Girlfriend ? "  [F]" : (kv.Key == CardType.Flashbang ? "  [G]" : (kv.Key == CardType.CarKey || kv.Key == CardType.GarageRemote ? "  [E at the car]" : "")));
                     sb.Append("<color=#").Append(hex).Append(">CARD  ").Append(CardInfo.Name(kv.Key)).Append(key).Append("</color>\n");
                 }
+            if (CarEscape.KeyDelivered || CarEscape.RemoteDelivered)
+                sb.Append("<color=#BFD9FF>CAR: key ").Append(CarEscape.KeyDelivered ? "[x]" : "[ ]").Append("  remote ").Append(CarEscape.RemoteDelivered ? "[x]" : "[ ]").Append("</color>\n");
             if (player.CanTriggerDecoy) sb.Append("<color=#BFF273>DECOY PLACED  [F] when hidden</color>\n");
             cardsText.text = sb.ToString().TrimEnd('\n');
             cardsText.color = Color.white;
@@ -408,10 +410,16 @@ public class GameUI : MonoBehaviour
         if (player.CanFlash) return "Press G to FLASH the clown and run to another hiding spot!";
         if (player.IsHidden && player.CanTriggerDecoy) return "Press F to send the clown to your decoy";
         if (player.IsHidden) return hiding ? "Hidden - wait for the clown" : (player.IsLockedIn ? "Hidden - stay quiet and hope he misses you" : "Hidden - stay quiet (E to leave)");
+        if (CarEscape.CanDeliver(player))
+        {
+            string what = player.HasCarKey ? "the car key" : "the garage remote";
+            return "Press E to leave " + what + " in the car";
+        }
         if (player.AvailableSpot) return player.CardCount(CardType.Decoy) > 0 ? "Press E to hide   |   Press F to place the decoy" : "Press E to hide";
         bool gf = player.CardCount(CardType.Girlfriend) > 0;
         if (player.AvailableSearchable) return gf ? "Press E to search   |   Press F to place your girlfriend" : "Press E to search";
         if (gf) return "Press F to place your girlfriend here (not next to a hiding spot)";
+        if (CarEscape.IsNear(player) && !CarEscape.BothDelivered) return "The car needs the CAR KEY and the GARAGE REMOTE (hidden in the cabinets)";
         return hiding ? "Click to walk, hold Space to run - find a hiding spot" : "Stay out of his sight - hide!";
     }
 

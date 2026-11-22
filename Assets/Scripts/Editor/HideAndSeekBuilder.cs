@@ -228,7 +228,7 @@ public static class HideAndSeekBuilder
         Box("Windows", car, new Vector3(-0.3f, 1.3f, 0f), new Vector3(2.02f, 0.45f, 1.62f), mGlass, false);
         foreach (Vector2 w in new[] { new Vector2(-1.25f, 0.85f), new Vector2(1.25f, 0.85f), new Vector2(-1.25f, -0.85f), new Vector2(1.25f, -0.85f) })
             Cyl("Wheel", car, new Vector3(w.x, 0.3f, w.y), new Vector3(0.6f, 0.1f, 0.6f), mKiller, new Vector3(90f, 0f, 0f), false);
-        Box("Hood_Open", car, new Vector3(1.6f, 1.25f, 0f), new Vector3(0.9f, 0.05f, 1.6f), carPaint, false, new Vector3(0f, 0f, 55f));
+        Box("Hood", car, new Vector3(1.55f, 1.03f, 0f), new Vector3(0.7f, 0.05f, 1.6f), carPaint, false); // closed hood, lies flat on the body
         Workbench(p, new Vector3(-27f, 0f, 29.45f), 0f, 2.6f);
         for (int i = 0; i < 3; i++)
             Cyl("Tire", p, new Vector3(-13f, 0.15f + i * 0.3f, 28.9f), new Vector3(0.9f, 0.15f, 0.9f), mKiller, null, i == 0);

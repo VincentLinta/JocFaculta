@@ -27,6 +27,9 @@ public class SearchableObject : MonoBehaviour
     bool dresser;
     Transform drawer, doorL, doorR;
     Light glow;
+    bool marked; // holds a car key / garage remote the player already knows about
+    static readonly Color WarmColor = new Color(1f, 0.8f, 0.4f);
+    static readonly Color MarkedColor = new Color(0.7f, 0.4f, 1f); // purple
     Vector2Int cachedPlayerTile = new Vector2Int(-999, -999);
     bool cachedReach;
 
@@ -58,16 +61,21 @@ public class SearchableObject : MonoBehaviour
         PlayerController p = PlayerController.Instance;
         GameManager gm = GameManager.Instance;
         GridManager grid = GridManager.Instance;
-        bool show = !IsSearched && p != null && gm != null && grid != null
+        bool near = !IsSearched && p != null && gm != null && grid != null
                     && gm.CanPlayerAct && !p.IsBusy && !p.IsHidden && IsInReach(p.Tile, grid);
+        // A cabinet that still holds the car key / garage remote glows purple from afar once the player knows about it.
+        bool show = near || (marked && !IsSearched);
         glow.enabled = show;
-        if (show) glow.intensity = 0.5f + 0.35f * Mathf.Sin(Time.unscaledTime * 4f);
+        glow.color = marked ? MarkedColor : WarmColor;
+        glow.range = marked ? 4.5f : 3.2f;
+        if (show) glow.intensity = (marked ? 1.1f : 0.5f) + 0.35f * Mathf.Sin(Time.unscaledTime * 4f);
     }
 
     /// <summary>Plays the opening animation, then gives the contents to the player.</summary>
     public IEnumerator SearchRoutine(PlayerController player)
     {
         IsSearched = true;
+        marked = false;
         if (glow) glow.enabled = false;
         AudioManager.Play(AudioManager.Sfx.Rustle);
 
@@ -97,9 +105,20 @@ public class SearchableObject : MonoBehaviour
                 bool tookNew = false;
                 yield return player.ChooseCard(card, r => tookNew = r);
                 if (tookNew)
+                {
                     Toast($"Took card: {CardInfo.Name(card)} - {CardInfo.Description(card)}  (dropped {CardInfo.Name(held.Value)})", CardInfo.Tint(card), 4f);
+                    if (IsEscapeItem(held.Value))
+                    {
+                        // The dropped car key / garage remote must not be lost: it stays in this cabinet.
+                        card = held.Value;
+                        Reopen();
+                    }
+                }
                 else
+                {
                     Toast($"Kept card: {CardInfo.Name(held.Value)}  (left {CardInfo.Name(card)} behind)", CardInfo.Tint(held.Value), 3f);
+                    if (IsEscapeItem(card)) Reopen(); // the car key / garage remote stays in the cabinet, can be taken later
+                }
             }
             else
             {
@@ -109,6 +128,21 @@ public class SearchableObject : MonoBehaviour
             }
         }
         else Toast("Nothing but dust.", new Color(0.85f, 0.82f, 0.75f));
+    }
+
+    /// <summary>Shows the purple highlight from afar (used to reveal the car key / garage remote cabinets).</summary>
+    public void MarkKnown() { if (!IsSearched) marked = true; }
+
+    static bool IsEscapeItem(CardType t) { return t == CardType.CarKey || t == CardType.GarageRemote; }
+
+    /// <summary>The cabinet can be searched again (an escape item that was left behind is still inside).</summary>
+    void Reopen()
+    {
+        IsSearched = false;
+        marked = true;
+        contents = Contents.Card;
+        cachedPlayerTile = new Vector2Int(-999, -999);
+        if (glow) glow.enabled = true;
     }
 
     /// <summary>

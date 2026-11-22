@@ -1,7 +1,7 @@
 using UnityEngine;
 
 /// <summary>Special-power cards the player can find in cabinets. Add new cards here.</summary>
-public enum CardType { Fortify, Escape, FightBack, Decoy, Girlfriend, Flashbang }
+public enum CardType { Fortify, Escape, FightBack, Decoy, Girlfriend, Flashbang, CarKey, GarageRemote }
 
 public static class CardInfo
 {
@@ -15,6 +15,8 @@ public static class CardInfo
             case CardType.Decoy: return "DECOY";
             case CardType.Girlfriend: return "GIRLFRIEND";
             case CardType.Flashbang: return "FLASHBANG";
+            case CardType.CarKey: return "CAR KEY";
+            case CardType.GarageRemote: return "GARAGE REMOTE";
             default: return t.ToString().ToUpper();
         }
     }
@@ -29,6 +31,8 @@ public static class CardInfo
             case CardType.Decoy: return "F at a hiding spot places it; hide, press F again and the clown goes there first";
             case CardType.Girlfriend: return "F places her as a trap anywhere (not next to a hiding spot); if the clown walks past her he is stunned for 2s while she tells him off";
             case CardType.Flashbang: return "G when hidden and the clown is at your spot or close: he is blinded for a few seconds and you run to another hiding spot";
+            case CardType.CarKey: return "leave it in the garage car (E). With the garage remote too, you escape by car";
+            case CardType.GarageRemote: return "leave it in the garage car (E). With the car key too, you escape by car";
             default: return "";
         }
     }
@@ -43,6 +47,8 @@ public static class CardInfo
             case CardType.Decoy: return new Color(0.75f, 0.95f, 0.45f);
             case CardType.Girlfriend: return new Color(1f, 0.55f, 0.78f);
             case CardType.Flashbang: return new Color(1f, 0.98f, 0.6f);
+            case CardType.CarKey: return new Color(0.75f, 0.85f, 1f);
+            case CardType.GarageRemote: return new Color(0.75f, 0.55f, 1f);
             default: return Color.white;
         }
     }

@@ -13,6 +13,8 @@ public class SearchableSpawner : MonoBehaviour
     public int guaranteedCards = 9;
     [Tooltip("How many Decoy cards are hidden on the map. The game design is ONE per match; more is only for testing.")]
     public int decoyCount = 4;
+    [Tooltip("TESTING: the cabinets holding the car key and the garage remote glow purple from the start of the match.")]
+    public bool highlightEscapeItems = true;
     [Tooltip("Chance (0-1) that any other object holds a card.")]
     public float cardChance = 0.15f;
     [Tooltip("Chance (0-1) that any other object holds an energy drink.")]
@@ -61,6 +63,7 @@ public class SearchableSpawner : MonoBehaviour
     void Spawn()
     {
         UsedCards.Clear();
+        CarEscape.Reset();
         GridManager grid = GridManager.Instance;
         PlayerController player = PlayerController.Instance;
         if (grid == null) return;
@@ -120,6 +123,21 @@ public class SearchableSpawner : MonoBehaviour
         {
             placed[i].contents = SearchableObject.Contents.Card;
             placed[i].card = CardType.Decoy;
+        }
+
+        // The CAR KEY and the GARAGE REMOTE: one of each, in two different cabinets (not the ones holding a Decoy).
+        if (CarEscape.Exists)
+        {
+            int at = Mathf.Min(decoyCount, placed.Count);
+            if (placed.Count >= at + 2)
+            {
+                placed[at].contents = SearchableObject.Contents.Card;
+                placed[at].card = CardType.CarKey;
+                placed[at + 1].contents = SearchableObject.Contents.Card;
+                placed[at + 1].card = CardType.GarageRemote;
+                if (highlightEscapeItems) { placed[at].MarkKnown(); placed[at + 1].MarkKnown(); }
+            }
+            else Debug.LogWarning("[Searchables] Not enough cabinets for the car key and the garage remote.");
         }
         Debug.Log($"[Searchables] Placed {used.Count} searchable objects.");
         SpawnDoors(grid, candidates, used);

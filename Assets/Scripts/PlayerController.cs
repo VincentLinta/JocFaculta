@@ -190,6 +190,7 @@ public class PlayerController : MonoBehaviour
         GameManager gm = GameManager.Instance;
         AvailableSpot = IsHidden ? null : FindSpot();
         AvailableSearchable = (IsHidden || AvailableSpot != null) ? null : FindSearchable();
+        CarEscape.UpdateHighlight(this); // yellow glow on the car when you bring the key / remote
 
         bool canAct = gm != null && gm.CanPlayerAct && !IsBusy;
         if (!canAct)
@@ -387,6 +388,7 @@ public class PlayerController : MonoBehaviour
         {
             if (!lockInHidingSpot) StartCoroutine(ExitAction());
         }
+        else if (CarEscape.CanDeliver(this)) CarEscape.Deliver(this); // leave the key / remote card in the car
         else if (AvailableSpot != null) StartCoroutine(EnterAction(AvailableSpot));
         else if (AvailableSearchable != null) StartCoroutine(SearchAction(AvailableSearchable));
     }
@@ -407,6 +409,26 @@ public class PlayerController : MonoBehaviour
         TryUseCard(CardType.Escape);
         StartCoroutine(EscapeRun(gm));
         gm.ActivateEscape();
+    }
+
+    // ------------------------------------------------------------------ Car escape items (car key / garage remote)
+
+    /// <summary>The CAR KEY / GARAGE REMOTE are normal cards: they take the card slot until they are left in the car.</summary>
+    public bool HasCarKey => heldCard.HasValue && heldCard.Value == CardType.CarKey;
+    public bool HasGarageRemote => heldCard.HasValue && heldCard.Value == CardType.GarageRemote;
+
+    /// <summary>Hands the card over (left in the car). Returns false if the player did not hold it.</summary>
+    public bool TakeItem(CardType t) { return TryUseCard(t); }
+
+    /// <summary>The getaway starts: the player sits in the car (invisible, no input) and moves with it.</summary>
+    public void BeginCarEscape(Transform car)
+    {
+        IsBusy = true;
+        IsRunning = false;
+        path = null;
+        if (grid != null) grid.ClearHighlights();
+        SetVisible(false);
+        transform.SetParent(car, true);
     }
 
     // ------------------------------------------------------------------ Flashbang card
