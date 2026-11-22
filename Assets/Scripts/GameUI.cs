@@ -33,6 +33,12 @@ public class GameUI : MonoBehaviour
     Text promptText;
     Text toastText;
     Text cardsText;
+
+    // Fight Back coin flip overlay.
+    GameObject fbRoot;
+    Image fbDim, fbCoin;
+    RectTransform fbCoinRT;
+    Text fbFace, fbTitle, fbResult;
     Text dangerText;
     Text phaseText;
     Text phaseBanner;
@@ -94,6 +100,7 @@ public class GameUI : MonoBehaviour
         KillerAI killer = KillerAI.Instance;
         if (gm == null || vignette == null) return;
 
+        UpdateFightBack(gm);
         bool canAct = gm.CanPlayerAct && player && !player.IsBusy;
 
         if (player)
@@ -473,9 +480,87 @@ public class GameUI : MonoBehaviour
         hideButton = MakeButton(root, "HIDE (E)", new Vector2(1f, 0f), new Vector2(-40f, 40f), new Vector2(240f, 70f), out hideLabel,
             () => { if (PlayerController.Instance) PlayerController.Instance.HideOrExit(); });
 
+        BuildFightBack(root);
         pausePanel = MakePausePanel(root);
         losePanel = MakeEndPanel(root, "GameOver", "YOU DIED", new Color(0.85f, 0.1f, 0.1f), "Retry", out loseMessage);
         winPanel = MakeEndPanel(root, "Win", "YOU SURVIVED", new Color(0.3f, 0.9f, 0.4f), "Play Again", out winMessage);
+    }
+
+    void BuildFightBack(RectTransform root)
+    {
+        fbDim = MakeImage("FightBack", root, new Color(0f, 0f, 0f, 0f));
+        Stretch(fbDim.rectTransform);
+        fbRoot = fbDim.gameObject;
+
+        fbTitle = MakeText("FBTitle", fbDim.rectTransform, "FIGHT BACK!", 80, TextAnchor.MiddleCenter);
+        Place(fbTitle.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 300f), new Vector2(1200f, 110f));
+        fbTitle.color = new Color(1f, 0.45f, 0.4f);
+
+        fbCoin = MakeImage("Coin", fbDim.rectTransform, new Color(0.95f, 0.78f, 0.2f));
+        fbCoin.sprite = MakeCircleSprite();
+        fbCoinRT = fbCoin.rectTransform;
+        Place(fbCoinRT, new Vector2(0.5f, 0.5f), new Vector2(0f, 40f), new Vector2(200f, 200f));
+
+        Image rim = MakeImage("Rim", fbCoinRT, new Color(0.62f, 0.45f, 0.08f));
+        rim.sprite = MakeCircleSprite();
+        Place(rim.rectTransform, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(168f, 168f));
+
+        fbFace = MakeText("Face", fbCoinRT, "YOU", 42, TextAnchor.MiddleCenter);
+        Place(fbFace.rectTransform, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(180f, 60f));
+
+        fbResult = MakeText("FBResult", fbDim.rectTransform, "", 64, TextAnchor.MiddleCenter);
+        Place(fbResult.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -230f), new Vector2(1400f, 100f));
+        fbRoot.SetActive(false);
+    }
+
+    static Sprite MakeCircleSprite()
+    {
+        const int size = 128;
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        float r = size * 0.5f;
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                float d = Vector2.Distance(new Vector2(x + 0.5f, y + 0.5f), new Vector2(r, r));
+                tex.SetPixel(x, y, new Color(1f, 1f, 1f, Mathf.Clamp01(r - d)));
+            }
+        }
+        tex.Apply();
+        return Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f));
+    }
+
+    /// <summary>The coin flip: the coin is tossed up, spins (YOU on one side, CLOWN on the other) and lands on the result.</summary>
+    void UpdateFightBack(GameManager gm)
+    {
+        if (fbRoot == null) return;
+        bool on = gm.FightBackActive;
+        if (fbRoot.activeSelf != on) fbRoot.SetActive(on);
+        if (!on) return;
+
+        fbDim.color = new Color(0f, 0f, 0f, Mathf.Clamp01(gm.FightBackElapsed / 0.3f) * 0.6f);
+
+        float t = gm.FightBackT;
+        float ease = 1f - Mathf.Pow(1f - t, 3f);
+        float angle = gm.FightBackHalfTurns * Mathf.PI * ease;
+        float c = Mathf.Cos(angle);
+        float toss = Mathf.Sin(Mathf.PI * t) * 230f; // up and back down
+        fbCoinRT.anchoredPosition = new Vector2(0f, 40f + toss);
+        fbCoinRT.localScale = new Vector3(Mathf.Max(0.05f, Mathf.Abs(c)), 1f + 0.12f * Mathf.Sin(Mathf.PI * t), 1f);
+
+        bool youSide = c >= 0f;
+        fbFace.text = youSide ? "YOU" : "CLOWN";
+        fbCoin.color = youSide ? new Color(0.95f, 0.78f, 0.2f) : new Color(0.85f, 0.35f, 0.3f);
+
+        if (gm.FightBackRevealed)
+        {
+            bool won = gm.FightBackWon;
+            fbResult.text = won ? "YOU BEAT THE CLOWN!" : "THE CLOWN WINS...";
+            fbResult.color = won ? new Color(0.4f, 1f, 0.5f) : new Color(1f, 0.35f, 0.3f);
+            float pulse = 1f + 0.06f * Mathf.Sin(Time.unscaledTime * 10f);
+            fbResult.rectTransform.localScale = new Vector3(pulse, pulse, 1f);
+        }
+        else fbResult.text = "";
     }
 
     GameObject MakePausePanel(RectTransform root)

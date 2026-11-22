@@ -51,6 +51,61 @@ public class GameManager : MonoBehaviour
     public GameState State { get; private set; } = GameState.Playing;
     public Phase CurrentPhase { get; private set; } = Phase.Hiding;
 
+    // ------------------------------------------------------------------ Fight Back coin flip
+
+    /// <summary>True while the coin is flipped after the clown found a player who holds a Fight Back card.</summary>
+    public bool FightBackActive { get; private set; }
+    public bool FightBackWon { get; private set; }
+    /// <summary>True once the coin has landed and shows the result.</summary>
+    public bool FightBackRevealed { get; private set; }
+    /// <summary>0..1 progress of the flip.</summary>
+    public float FightBackT { get; private set; }
+    public float FightBackElapsed { get; private set; }
+    /// <summary>How many half turns the coin makes. Even = it lands on the player's side.</summary>
+    public int FightBackHalfTurns { get; private set; } = 10;
+    public const float FightBackFlipTime = 2.4f;
+
+    /// <summary>Flips the coin (result already decided), shows it, then ends the game with the result.</summary>
+    public void StartFightBack(bool won, string winMessage, string loseMessage)
+    {
+        if (FightBackActive || !IsPlaying) return;
+        StartCoroutine(FightBackRoutine(won, winMessage, loseMessage));
+    }
+
+    System.Collections.IEnumerator FightBackRoutine(bool won, string winMessage, string loseMessage)
+    {
+        FightBackActive = true;
+        FightBackWon = won;
+        FightBackRevealed = false;
+        FightBackT = 0f;
+        FightBackElapsed = 0f;
+        FightBackHalfTurns = won ? 10 : 11;
+        AudioManager.Play(AudioManager.Sfx.DangerSting);
+
+        int lastHalf = 0;
+        while (FightBackElapsed < FightBackFlipTime)
+        {
+            FightBackElapsed += Time.deltaTime;
+            FightBackT = Mathf.Clamp01(FightBackElapsed / FightBackFlipTime);
+            float ease = 1f - Mathf.Pow(1f - FightBackT, 3f);
+            int half = (int)(FightBackHalfTurns * ease);
+            if (half != lastHalf)
+            {
+                lastHalf = half;
+                AudioManager.Play(AudioManager.Sfx.Tick); // a click for every half turn
+            }
+            yield return null;
+        }
+
+        FightBackT = 1f;
+        FightBackRevealed = true;
+        AudioManager.Play(won ? AudioManager.Sfx.Key : AudioManager.Sfx.Denied);
+        yield return new WaitForSeconds(1.5f);
+
+        FightBackActive = false;
+        if (won) Win(winMessage); else Lose(loseMessage);
+    }
+
     /// <summary>True when an Escape card opened one of the escape doors.</summary>
     public bool EscapeArmed { get; private set; }
     /// <summary>True after the player pressed Q: he runs for the exit and the clown rushes him.</summary>
@@ -95,7 +150,7 @@ public class GameManager : MonoBehaviour
 
     public bool IsPlaying => State == GameState.Playing;
     /// <summary>True when the player may move and use action keys.</summary>
-    public bool CanPlayerAct => IsPlaying && !IsPaused;
+    public bool CanPlayerAct => IsPlaying && !IsPaused && !FightBackActive;
 
     float hiddenFor;
     int lastTickSecond = -1;
@@ -143,7 +198,7 @@ public class GameManager : MonoBehaviour
             if (!IsPlaying && kb.rKey.wasPressedThisFrame) Restart();
         }
 
-        if (!IsPlaying || IsPaused || IsRevealing) return;
+        if (!IsPlaying || IsPaused || IsRevealing || FightBackActive) return;
 
         PhaseTimeLeft = Mathf.Max(0f, PhaseTimeLeft - Time.deltaTime);
         if (CurrentPhase == Phase.Hiding) UpdateHidingPhase();

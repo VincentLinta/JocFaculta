@@ -91,7 +91,12 @@ public class KillerAI : MonoBehaviour
     [System.NonSerialized] public float WalkArmSwing;
 
     bool hunting;
+    // Spots still to be checked. He always walks to one of the NEAREST ones (see GoToNextSpot).
     readonly List<HidingSpot> queue = new List<HidingSpot>();
+    // Urgent spots (a decoy, a spot he saw you enter) that are checked before the nearest ones.
+    readonly List<HidingSpot> priority = new List<HidingSpot>();
+    [Tooltip("He picks his next spot at random among this many of the nearest unchecked spots, so he does not skip past hiding places.")]
+    public int nearestPool = 3;
     HidingSpot targetSpot;
     HidingSpot lureSpot;    // a Decoy card was placed here: he goes there first (even if checked before)
     HidingSpot pendingLure; // decoy placed before he spawned
@@ -139,6 +144,7 @@ public class KillerAI : MonoBehaviour
     void Update()
     {
         if (player == null) return;
+        if (GameManager.Instance != null && GameManager.Instance.FightBackActive) return; // he waits for the coin
         if (!hunting)
         {
             DistanceToPlayer = 999f;
@@ -185,13 +191,12 @@ public class KillerAI : MonoBehaviour
     void CatchPlayer(string message)
     {
         GameManager gm = GameManager.Instance;
-        if (gm == null || !gm.IsPlaying) return;
+        if (gm == null || !gm.IsPlaying || gm.FightBackActive) return;
         if (player != null && player.TryUseCard(CardType.FightBack))
         {
             bool won = Random.value < fightBackChance;
             Debug.Log($"[FightBack] Fight back used: {(won ? "WON" : "LOST")}");
-            if (won) gm.Win("You fought back and beat the clown!");
-            else gm.Lose("You fought back... but the clown won.");
+            gm.StartFightBack(won, "You fought back and beat the clown!", "You fought back... but the clown won.");
             return;
         }
         gm.Lose(message);
@@ -249,19 +254,14 @@ public class KillerAI : MonoBehaviour
         transform.rotation = Quaternion.Euler(0f, Random.Range(0, 4) * 90f, 0f);
         SetVisible(true);
 
-        // Every hiding spot once, in random order.
+        // Every hiding spot once. The order is decided on the way: always one of the nearest.
         queue.Clear();
+        priority.Clear();
         foreach (HidingSpot s in HidingSpot.All) if (s.enterPoint != null) queue.Add(s);
-        for (int i = queue.Count - 1; i > 0; i--)
-        {
-            int j = Random.Range(0, i + 1);
-            (queue[i], queue[j]) = (queue[j], queue[i]);
-        }
 
         if (pendingLure != null)
         {
-            queue.Remove(pendingLure);
-            queue.Insert(0, pendingLure);
+            priority.Insert(0, pendingLure);
             lureSpot = pendingLure;
             pendingLure = null;
         }
@@ -269,7 +269,7 @@ public class KillerAI : MonoBehaviour
         nextHonk = Time.time + Random.Range(honkInterval.x, honkInterval.y);
         nextBreath = Time.time + Random.Range(breathInterval.x, breathInterval.y);
         AudioManager.Play(AudioManager.Sfx.KillerSpawn);
-        Debug.Log($"[Killer] Spawned on tile {spawn}; {queue.Count} hiding spots to check in random order.");
+        Debug.Log($"[Killer] Spawned on tile {spawn}; {queue.Count} hiding spots to check, nearest first.");
         GoToNextSpot();
     }
 
@@ -277,7 +277,10 @@ public class KillerAI : MonoBehaviour
 
     Vector2Int CurrentTile => grid.WorldToTile(transform.position);
 
-    /// <summary>Picks the next unchecked spot and a path to it. Spots he cannot reach are skipped.</summary>
+    /// <summary>
+    /// Picks the next spot: urgent ones first (decoy, a spot he saw you enter), otherwise one of the
+    /// <see cref="nearestPool"/> nearest unchecked spots by walking distance. Spots he cannot reach are dropped.
+    /// </summary>
     void GoToNextSpot()
     {
         CheckingSpot = null;
@@ -287,23 +290,48 @@ public class KillerAI : MonoBehaviour
         pathIndex = 0;
         CurrentState = State.Search;
 
-        while (queue.Count > 0)
+        // 1) Urgent spots.
+        while (priority.Count > 0)
         {
-            HidingSpot s = queue[0];
-            queue.RemoveAt(0);
-            if (s == null || (s.IsChecked && s != witnessedSpot && s != lureSpot)) continue; // never the same spot twice
-
+            HidingSpot s = priority[0];
+            priority.RemoveAt(0);
+            if (s == null || (s.IsChecked && s != witnessedSpot && s != lureSpot)) continue;
             List<Vector2Int> p = grid.FindPath(CurrentTile, s.Tile);
             if (p == null) // unreachable
             {
                 if (s == lureSpot) { s.RemoveDecoy(); lureSpot = null; }
                 continue;
             }
+            queue.Remove(s);
             targetSpot = s;
             path = p;
             return;
         }
-        // No spot left: he just stands there until the timer ends.
+
+        // 2) The nearest unchecked spots (by path length); pick one of them at random.
+        var near = new List<KeyValuePair<HidingSpot, List<Vector2Int>>>();
+        for (int i = queue.Count - 1; i >= 0; i--)
+        {
+            HidingSpot s = queue[i];
+            if (s == null || s.IsChecked) { queue.RemoveAt(i); continue; }
+            List<Vector2Int> p = grid.FindPath(CurrentTile, s.Tile);
+            if (p == null) { queue.RemoveAt(i); continue; } // unreachable
+            near.Add(new KeyValuePair<HidingSpot, List<Vector2Int>>(s, p));
+        }
+        if (near.Count == 0) return; // No spot left: he just stands there until the timer ends.
+
+        near.Sort((x, y) => x.Value.Count.CompareTo(y.Value.Count));
+        int pool = Mathf.Clamp(nearestPool, 1, near.Count);
+        KeyValuePair<HidingSpot, List<Vector2Int>> pick = near[Random.Range(0, pool)];
+        queue.Remove(pick.Key);
+        targetSpot = pick.Key;
+        path = pick.Value;
+    }
+
+    /// <summary>A spot he had picked but did not reach goes back to the pool of spots still to check.</summary>
+    void ReturnToPool(HidingSpot spot)
+    {
+        if (spot != null && !queue.Contains(spot)) queue.Add(spot);
     }
 
     void UpdateSearch(float dt)
@@ -377,7 +405,7 @@ public class KillerAI : MonoBehaviour
     {
         // Remember the spot he was heading to / checking: it still has to be checked later.
         HidingSpot interrupted = CheckingSpot != null ? CheckingSpot : targetSpot;
-        if (interrupted != null && (!interrupted.IsChecked || interrupted == witnessedSpot)) queue.Insert(0, interrupted);
+        if (interrupted != null && (!interrupted.IsChecked || interrupted == witnessedSpot)) ReturnToPool(interrupted);
         targetSpot = null;
         CheckingSpot = null;
         CheckProgress = 0f;
@@ -569,8 +597,9 @@ public class KillerAI : MonoBehaviour
         }
         lureSpot = spot;
         queue.Remove(spot);
-        if (CurrentState == State.Search && targetSpot != null && targetSpot != spot) queue.Insert(0, targetSpot);
-        queue.Insert(0, spot);
+        if (CurrentState == State.Search && targetSpot != null && targetSpot != spot) ReturnToPool(targetSpot);
+        priority.Remove(spot);
+        priority.Insert(0, spot);
         // Walking to another spot: turn around now. Busy checking or chasing: he gets there afterwards.
         if (CurrentState == State.Search) GoToNextSpot();
     }
@@ -593,8 +622,9 @@ public class KillerAI : MonoBehaviour
 
         witnessedSpot = spot;
         queue.Remove(spot);
-        if (CurrentState == State.Search && targetSpot != null && targetSpot != spot) queue.Insert(0, targetSpot);
-        queue.Insert(0, spot);
+        if (CurrentState == State.Search && targetSpot != null && targetSpot != spot) ReturnToPool(targetSpot);
+        priority.Remove(spot);
+        priority.Insert(0, spot);
         // Busy checking another spot: he finishes that first. Otherwise he turns around now.
         if (CurrentState == State.Search || CurrentState == State.Chase) GoToNextSpot();
     }
