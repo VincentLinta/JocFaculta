@@ -135,7 +135,7 @@ public class GameUI : MonoBehaviour
                 if (kv.Value > 0)
                 {
                     string hex = ColorUtility.ToHtmlStringRGB(CardInfo.Tint(kv.Key));
-                    string key = kv.Key == CardType.Escape && gm.CanUseEscape ? "  [Q]" : "";
+                    string key = kv.Key == CardType.Escape && gm.CanUseEscape ? "  [Q]" : (kv.Key == CardType.Decoy ? "  [F]" : "");
                     sb.Append("<color=#").Append(hex).Append(">CARD  ").Append(CardInfo.Name(kv.Key)).Append(key).Append("</color>\n");
                 }
             cardsText.text = sb.ToString().TrimEnd('\n');
@@ -370,7 +370,7 @@ public class GameUI : MonoBehaviour
         if (gm.EscapeArmed && player.IsHidden) return "Press Q to leave your hiding spot and run to the open door!";
         bool hiding = gm.CurrentPhase == GameManager.Phase.Hiding;
         if (player.IsHidden) return hiding ? "Hidden - wait for the clown" : (player.IsLockedIn ? "Hidden - stay quiet and hope he misses you" : "Hidden - stay quiet (E to leave)");
-        if (player.AvailableSpot) return "Press E to hide";
+        if (player.AvailableSpot) return player.CardCount(CardType.Decoy) > 0 ? "Press E to hide   |   Press F to place the decoy" : "Press E to hide";
         if (player.AvailableSearchable) return "Press E to search";
         return hiding ? "Click to walk, hold Space to run - find a hiding spot" : "Stay out of his sight - hide!";
     }
@@ -423,7 +423,7 @@ public class GameUI : MonoBehaviour
         Place(checkedText.rectTransform, new Vector2(0f, 1f), new Vector2(40f, -90f), new Vector2(500f, 34f));
         checkedText.enabled = false;
 
-        Text controls = MakeText("Controls", root, "Click: walk | Space/Shift: run | E: hide / search | Q: Escape card | Right mouse + drag: camera | Wheel: zoom", 20, TextAnchor.MiddleCenter);
+        Text controls = MakeText("Controls", root, "Click: walk | Space/Shift: run | E: hide / search | Q: Escape card | F: place Decoy | Right mouse + drag: camera | Wheel: zoom", 20, TextAnchor.MiddleCenter);
         Place(controls.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 12f), new Vector2(1400f, 28f));
         controls.color = new Color(0.9f, 0.88f, 0.82f, 0.55f);
 

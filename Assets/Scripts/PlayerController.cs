@@ -143,6 +143,11 @@ public class PlayerController : MonoBehaviour
             UseEscapeCard();
             return;
         }
+        if (kb != null && kb.fKey.wasPressedThisFrame)
+        {
+            PlaceDecoy();
+            return;
+        }
 
         if (IsHidden)
         {
@@ -316,6 +321,24 @@ public class PlayerController : MonoBehaviour
         TryUseCard(CardType.Escape);
         StartCoroutine(EscapeRun(gm));
         gm.ActivateEscape();
+    }
+
+    /// <summary>F: places the Decoy card at the hiding spot next to the player. The clown goes straight there.</summary>
+    public void PlaceDecoy()
+    {
+        GameManager gm = GameManager.Instance;
+        if (gm == null || !gm.CanPlayerAct || IsBusy || IsHidden || autoEscape || CardCount(CardType.Decoy) <= 0) return;
+        if (AvailableSpot == null)
+        {
+            SearchableObject.ShowToast("Go next to a hiding spot to place the decoy.", new Color(0.75f, 0.95f, 0.45f), 2.5f);
+            return;
+        }
+        HidingSpot spot = AvailableSpot;
+        TryUseCard(CardType.Decoy); // used up when placed
+        spot.PlaceDecoyMarker();
+        AudioManager.Play(AudioManager.Sfx.Rustle);
+        if (KillerAI.Instance != null) KillerAI.Instance.LureTo(spot);
+        SearchableObject.ShowToast("Decoy placed! The clown is heading there.", new Color(0.75f, 0.95f, 0.45f), 3.5f);
     }
 
     static void EscapeHint(string message)

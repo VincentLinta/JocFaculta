@@ -8,21 +8,26 @@ using UnityEngine;
 /// </summary>
 public class SearchableSpawner : MonoBehaviour
 {
-    public int count = 12;
+    public int count = 26;
     [Tooltip("At least this many objects always hold a card.")]
-    public int guaranteedCards = 6;
+    public int guaranteedCards = 9;
+    [Tooltip("How many Decoy cards are hidden on the map. The game design is ONE per match; more is only for testing.")]
+    public int decoyCount = 4;
     [Tooltip("Chance (0-1) that any other object holds a card.")]
     public float cardChance = 0.15f;
     [Tooltip("Chance (0-1) that any other object holds an energy drink.")]
     public float drinkChance = 0.3f;
     [Tooltip("Minimum distance between two objects, in tiles.")]
-    public int minSpacing = 4;
+    public int minSpacing = 3;
     [Header("Escape doors")]
     [Tooltip("How many escape points (doors and windows) are put on the outer walls. The Escape card opens one of them.")]
     public int doorCount = 6;
     [Tooltip("Chance (0-1) that an escape point is a window instead of a door.")]
     public float windowChance = 0.4f;
     public int doorSpacing = 6;
+
+    // Cards that can show up in several cabinets. The Decoy is special: exactly one per match.
+    static readonly CardType[] Spawnable = { CardType.Fortify, CardType.Escape, CardType.FightBack };
 
     static readonly Vector2Int[] Dirs = { Vector2Int.up, Vector2Int.right, Vector2Int.down, Vector2Int.left };
 
@@ -68,6 +73,7 @@ public class SearchableSpawner : MonoBehaviour
         }
 
         var used = new List<Vector2Int>();
+        var placed = new List<SearchableObject>();
         foreach (var c in candidates)
         {
             if (used.Count >= count) break;
@@ -76,10 +82,21 @@ public class SearchableSpawner : MonoBehaviour
                 if (GridManager.Chebyshev(u, c.Key) < minSpacing) { tooClose = true; break; }
             if (tooClose) continue;
             bool card = used.Count < guaranteedCards;
-            var all = (CardType[])System.Enum.GetValues(typeof(CardType));
-            CardType forced = all[used.Count % all.Length]; // guaranteed cards cycle through every type
+            CardType forced = Spawnable[used.Count % Spawnable.Length]; // guaranteed cards cycle through every type
             used.Add(c.Key);
-            Place(grid, c.Key, c.Value, card, forced);
+            placed.Add(Place(grid, c.Key, c.Value, card, forced));
+        }
+
+        // The Decoy cards (normally exactly one per match; decoyCount is higher only for testing).
+        for (int i = placed.Count - 1; i > 0; i--)
+        {
+            int j = Random.Range(0, i + 1);
+            (placed[i], placed[j]) = (placed[j], placed[i]);
+        }
+        for (int i = 0; i < Mathf.Min(decoyCount, placed.Count); i++)
+        {
+            placed[i].contents = SearchableObject.Contents.Card;
+            placed[i].card = CardType.Decoy;
         }
         Debug.Log($"[Searchables] Placed {used.Count} searchable objects.");
         SpawnDoors(grid, candidates, used);
@@ -185,7 +202,7 @@ public class SearchableSpawner : MonoBehaviour
         return false;
     }
 
-    void Place(GridManager grid, Vector2Int tile, Vector2Int wallDir, bool forceCard, CardType forcedType)
+    SearchableObject Place(GridManager grid, Vector2Int tile, Vector2Int wallDir, bool forceCard, CardType forcedType)
     {
         var go = new GameObject("Searchable");
         go.transform.SetParent(transform, false);
@@ -197,7 +214,8 @@ public class SearchableSpawner : MonoBehaviour
         SearchableObject.Contents contents = SearchableObject.Contents.Nothing;
         if (forceCard || r < cardChance) contents = SearchableObject.Contents.Card;
         else if (r < cardChance + drinkChance) contents = SearchableObject.Contents.EnergyDrink;
-        var types = (CardType[])System.Enum.GetValues(typeof(CardType));
+        CardType[] types = Spawnable;
         so.Init(grid, tile, Random.value < 0.5f, contents, forceCard ? forcedType : types[Random.Range(0, types.Length)]);
+        return so;
     }
 }

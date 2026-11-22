@@ -40,6 +40,50 @@ public class HidingSpot : MonoBehaviour
     /// <summary>The grid tile you stand on to use this spot.</summary>
     public Vector2Int Tile { get; private set; }
 
+    /// <summary>True while a Decoy card sits at this spot (the player can not hide here then).</summary>
+    public bool HasDecoy { get; private set; }
+    GameObject decoyObject;
+
+    /// <summary>Puts a small glowing decoy (a ticking music box) in front of this spot.</summary>
+    public void PlaceDecoyMarker()
+    {
+        HasDecoy = true;
+        if (decoyObject != null) return;
+        Vector3 pos = (enterPoint != null ? enterPoint.position : transform.position);
+        pos.y = 0.2f;
+        decoyObject = new GameObject("Decoy");
+        decoyObject.transform.position = pos;
+
+        GameObject box = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        box.transform.SetParent(decoyObject.transform, false);
+        box.transform.localScale = new Vector3(0.4f, 0.3f, 0.3f);
+        Destroy(box.GetComponent<Collider>());
+        Shader sh = Shader.Find("Universal Render Pipeline/Unlit");
+        if (sh == null) sh = Shader.Find("Unlit/Color");
+        var m = new Material(sh);
+        m.color = new Color(0.75f, 0.95f, 0.45f);
+        if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", m.color);
+        box.GetComponent<Renderer>().sharedMaterial = m;
+
+        var lg = new GameObject("DecoyLight");
+        lg.transform.SetParent(decoyObject.transform, false);
+        lg.transform.localPosition = Vector3.up * 0.5f;
+        Light l = lg.AddComponent<Light>();
+        l.type = LightType.Point;
+        l.color = new Color(0.75f, 0.95f, 0.45f);
+        l.range = 4f;
+        l.intensity = 1.2f;
+        l.shadows = LightShadows.None;
+    }
+
+    /// <summary>Removes the decoy (the clown reached it).</summary>
+    public void RemoveDecoy()
+    {
+        HasDecoy = false;
+        if (decoyObject != null) Destroy(decoyObject);
+        decoyObject = null;
+    }
+
     static Material sharedOutline;
     readonly List<Vector2Int> objectTiles = new List<Vector2Int>();
     readonly List<GameObject> outlineParts = new List<GameObject>();
@@ -82,7 +126,7 @@ public class HidingSpot : MonoBehaviour
         GridManager grid = GridManager.Instance;
         bool show = player != null && gm != null && grid != null
                     && gm.CanPlayerAct && !player.IsBusy && !player.IsHidden
-                    && !isOccupied && IsInReach(player.Tile, grid);
+                    && !isOccupied && !HasDecoy && IsInReach(player.Tile, grid);
         SetOutline(show);
 
         if (show && outlineMaterial != null)

@@ -93,6 +93,8 @@ public class KillerAI : MonoBehaviour
     bool hunting;
     readonly List<HidingSpot> queue = new List<HidingSpot>();
     HidingSpot targetSpot;
+    HidingSpot lureSpot;    // a Decoy card was placed here: he goes there first (even if checked before)
+    HidingSpot pendingLure; // decoy placed before he spawned
     HidingSpot witnessedSpot;
     List<Vector2Int> path;
     int pathIndex;
@@ -256,6 +258,14 @@ public class KillerAI : MonoBehaviour
             (queue[i], queue[j]) = (queue[j], queue[i]);
         }
 
+        if (pendingLure != null)
+        {
+            queue.Remove(pendingLure);
+            queue.Insert(0, pendingLure);
+            lureSpot = pendingLure;
+            pendingLure = null;
+        }
+
         nextHonk = Time.time + Random.Range(honkInterval.x, honkInterval.y);
         nextBreath = Time.time + Random.Range(breathInterval.x, breathInterval.y);
         AudioManager.Play(AudioManager.Sfx.KillerSpawn);
@@ -281,10 +291,14 @@ public class KillerAI : MonoBehaviour
         {
             HidingSpot s = queue[0];
             queue.RemoveAt(0);
-            if (s == null || (s.IsChecked && s != witnessedSpot)) continue; // never the same spot twice
+            if (s == null || (s.IsChecked && s != witnessedSpot && s != lureSpot)) continue; // never the same spot twice
 
             List<Vector2Int> p = grid.FindPath(CurrentTile, s.Tile);
-            if (p == null) continue; // unreachable
+            if (p == null) // unreachable
+            {
+                if (s == lureSpot) { s.RemoveDecoy(); lureSpot = null; }
+                continue;
+            }
             targetSpot = s;
             path = p;
             return;
@@ -343,6 +357,8 @@ public class KillerAI : MonoBehaviour
         HidingSpot spot = CheckingSpot;
         spot.MarkChecked();
         if (spot == witnessedSpot) witnessedSpot = null;
+        if (spot == lureSpot) lureSpot = null;
+        spot.RemoveDecoy();
         CheckingSpot = null;
         CheckProgress = 0f;
         CheckFortified = false;
@@ -537,6 +553,26 @@ public class KillerAI : MonoBehaviour
             return false;
 
         return true;
+    }
+
+    /// <summary>
+    /// A Decoy card was placed at this spot: he goes straight there (even if he checked it before),
+    /// then carries on with his normal search.
+    /// </summary>
+    public void LureTo(HidingSpot spot)
+    {
+        if (spot == null || EscapeMode) return;
+        if (!hunting)
+        {
+            pendingLure = spot; // he heads there first as soon as he spawns
+            return;
+        }
+        lureSpot = spot;
+        queue.Remove(spot);
+        if (CurrentState == State.Search && targetSpot != null && targetSpot != spot) queue.Insert(0, targetSpot);
+        queue.Insert(0, spot);
+        // Walking to another spot: turn around now. Busy checking or chasing: he gets there afterwards.
+        if (CurrentState == State.Search) GoToNextSpot();
     }
 
     /// <summary>

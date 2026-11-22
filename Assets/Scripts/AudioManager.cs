@@ -30,6 +30,7 @@ public class AudioManager : MonoBehaviour
     AudioSource chaseLayer;
     AudioSource sfxSource;
     AudioSource stepSource;
+    AudioClip[] stoneSteps; // a few variations so steps never sound identical
     AudioSource killerSource;
     AudioClip[] clips;
     float chaseMix;
@@ -183,6 +184,7 @@ public class AudioManager : MonoBehaviour
         clips = new AudioClip[Enum.GetValues(typeof(Sfx)).Length];
         clips[(int)Sfx.AllKeys] = MakeAllKeys();
         clips[(int)Sfx.Footstep] = MakeFootstep();
+        stoneSteps = new[] { MakeSoftStep(1, 92f), MakeSoftStep(2, 80f), MakeSoftStep(3, 104f), MakeSoftStep(4, 88f) };
         clips[(int)Sfx.Rustle] = MakeRustle();
         clips[(int)Sfx.Key] = MakeKeyChime();
         clips[(int)Sfx.DangerSting] = MakeDangerSting();
@@ -536,8 +538,9 @@ public class AudioManager : MonoBehaviour
         AudioClip clip = clips[(int)s];
         if (s == Sfx.Footstep)
         {
-            stepSource.pitch = UnityEngine.Random.Range(0.85f, 1.15f);
-            stepSource.PlayOneShot(clip, sfxVolume * 0.6f);
+            stepSource.pitch = UnityEngine.Random.Range(0.9f, 1.1f);
+            AudioClip step = stoneSteps != null && stoneSteps.Length > 0 ? stoneSteps[UnityEngine.Random.Range(0, stoneSteps.Length)] : clip;
+            stepSource.PlayOneShot(step, sfxVolume * 0.55f);
             return;
         }
         sfxSource.PlayOneShot(clip, sfxVolume);
@@ -922,18 +925,49 @@ public class AudioManager : MonoBehaviour
 
     // ------------------------------------------------------------------ killer sounds
 
-    /// <summary>Heavy boot step: low heel thud, a scuff and a second softer toe thud.</summary>
+    /// <summary>
+    /// Heavy boot step. Besides the deep thud it has mid-range body and a scuff, so it is also clear on laptop
+    /// speakers and headphones (a pure 60 Hz thump is nearly inaudible there). Second softer step and a faint hall tail.
+    /// </summary>
     static AudioClip MakeKillerStep()
     {
         var rng = new System.Random(11);
-        float lp = 0f;
-        return Build("KillerStep", 0.35f, t =>
+        float lp = 0f, grit = 0f, tail = 0f;
+        return Build("KillerStep", 0.55f, t =>
         {
-            lp += ((float)rng.NextDouble() * 2f - 1f - lp) * 0.12f;
-            float heel = 0.9f * Thump(t, 62f);
-            float scuff = 0.5f * lp * Mathf.Exp(-t * 18f);
-            float toe = 0.35f * Thump(t - 0.11f, 78f);
-            return 0.8f * (heel + scuff + toe);
+            float n = (float)rng.NextDouble() * 2f - 1f;
+            lp += (n - lp) * 0.3f;      // boot scuff on the floor
+            grit += (n - grit) * 0.55f; // heel contact
+            tail += (n - tail) * 0.05f; // hall
+            float attack = Mathf.Clamp01(t / 0.003f);
+            float body = 0.55f * Sin(105f, t) * Mathf.Exp(-t * 20f) + 0.35f * Sin(170f, t) * Mathf.Exp(-t * 28f);
+            float low = 0.5f * Thump(t, 58f);
+            float heel = 0.4f * grit * Mathf.Exp(-t * 85f);
+            float scuff = 0.5f * lp * Mathf.Exp(-t * 20f);
+            float toe = 0.5f * (Sin(125f, t - 0.12f) * Mathf.Exp(-Mathf.Max(0f, t - 0.12f) * 28f)) * (t > 0.12f ? 1f : 0f);
+            float hall = 0.3f * tail * Mathf.Exp(-t * 8f);
+            return Mathf.Clamp(attack * (body + low + heel + scuff + toe) + hall, -1f, 1f);
+        });
+    }
+
+    /// <summary>
+    /// Soft footstep on a hard floor: a muffled low thump, a short soft scuff and a very faint echo.
+    /// No sharp click and no pitched ring, so it stays calm even when heard many times.
+    /// </summary>
+    static AudioClip MakeSoftStep(int seed, float thumpFreq)
+    {
+        var rng = new System.Random(seed * 17);
+        float scuffLp = 0f, tailLp = 0f;
+        return Build("SoftStep" + seed, 0.3f, t =>
+        {
+            float n = (float)rng.NextDouble() * 2f - 1f;
+            scuffLp += (n - scuffLp) * 0.16f;   // dull noise
+            tailLp += (n - tailLp) * 0.05f;     // even duller: the room
+            float attack = Mathf.Clamp01(t / 0.004f); // soft start, no click
+            float thump = 0.6f * Sin(thumpFreq * (1f - 0.3f * t), t) * Mathf.Exp(-t * 34f);
+            float scuff = 0.32f * scuffLp * Mathf.Exp(-t * 32f);
+            float room = 0.16f * tailLp * Mathf.Exp(-t * 11f);
+            return 0.8f * (attack * (thump + scuff) + room);
         });
     }
 
