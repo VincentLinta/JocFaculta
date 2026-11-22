@@ -185,7 +185,7 @@ public static class HideAndSeekBuilder
     // ======================================================================
 
     /// <summary>Doorways (one 2x2 tile each) in the old north wall at z = 20: Storage, Office, Bathroom.</summary>
-    static readonly float[] NorthDoorsX = { -15f, -7f, 21f };
+    static readonly float[] NorthDoorsX = { -15f, -7f, 11f, 21f };
 
     /// <summary>
     /// Builds the north wing under Map/NorthWing: walls on tile lines, one-tile doors, floors, baseboards,
@@ -523,7 +523,6 @@ public static class HideAndSeekBuilder
         TornBed(p, new Vector3(2.6f, 0f, 11.5f));
         Rug(p, new Vector3(7.5f, 0f, 13f), new Vector2(3f, 2f));
         BrokenChair(p, new Vector3(12f, 0f, 15.5f), -30f);
-        Box("Wardrobe_Fallen", p, new Vector3(12.7f, 0.4f, 18.6f), new Vector3(2.2f, 0.8f, 1.4f), mDarkWood);
         WindowFrame(p, new Vector3(2.5f, 1.6f, 19.82f), 0f);
         Stain(p, new Vector3(9f, 0f, 9f), 1.2f);
         Cobweb(p, new Vector3(13.8f, 0f, 19.8f));
@@ -830,7 +829,7 @@ public static class HideAndSeekBuilder
         Spot(root, 5, HidingSpot.SpotType.Wardrobe, -3f, 19.45f, 180f);    // Office
         Spot(root, 6, HidingSpot.SpotType.UnderBed, 5f, 17.5f, 180f);      // Bedroom
         Spot(root, 7, HidingSpot.SpotType.Wardrobe, 13.45f, 12f, 270f);    // Bedroom
-        Spot(root, 8, HidingSpot.SpotType.Curtain, 10f, 19f, 180f);        // Bedroom
+        // (Spot 8, the Bedroom curtain at (10, 19), was removed: that tile is now a doorway into Bedroom 2)
         Spot(root, 9, HidingSpot.SpotType.Curtain, 27f, 18.5f, 180f);      // Bathroom (shower)
         Spot(root, 10, HidingSpot.SpotType.Vent, 29.55f, 12f, 270f);       // Bathroom
         Spot(root, 11, HidingSpot.SpotType.Vent, -29.55f, 4f, 90f);        // Corridor

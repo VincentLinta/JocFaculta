@@ -115,10 +115,17 @@ public class SearchableObject : MonoBehaviour
     /// After a Decoy was placed no more Decoys can be found: every cabinet that still holds one
     /// gets another card instead.
     /// </summary>
-    public static void RemoveDecoyCards()
+    public static void RemoveDecoyCards() { RemoveCardsOfType(CardType.Decoy); }
+
+    /// <summary>
+    /// After a card of this type was used up (Decoy placed, Girlfriend placed) no more of that type can be found:
+    /// every cabinet that still holds one gets a different card instead.
+    /// </summary>
+    public static void RemoveCardsOfType(CardType type)
     {
+        SearchableSpawner.UsedCards.Add(type);
         foreach (SearchableObject o in All)
-            if (!o.IsSearched && o.contents == Contents.Card && o.card == CardType.Decoy)
+            if (!o.IsSearched && o.contents == Contents.Card && o.card == type)
                 o.card = SearchableSpawner.RandomCard();
     }
 

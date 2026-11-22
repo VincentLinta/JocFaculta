@@ -482,6 +482,7 @@ public class PlayerController : MonoBehaviour
 
         TryUseCard(CardType.Girlfriend); // used up when placed
         Girlfriend.Create(grid.TileCenter(tile), tile);
+        SearchableObject.RemoveCardsOfType(CardType.Girlfriend); // no more Girlfriend cards to find
         AudioManager.Play(AudioManager.Sfx.Rustle);
         SearchableObject.ShowToast("Girlfriend placed. If the clown walks past her, he gets stunned.", pink, 4f);
     }

@@ -39,7 +39,16 @@ public class SearchableSpawner : MonoBehaviour
     static readonly CardType[] Spawnable = { CardType.Fortify, CardType.Escape, CardType.FightBack, CardType.Girlfriend };
 
     /// <summary>A random card that can show up in several cabinets (never the Decoy).</summary>
-    public static CardType RandomCard() { return Spawnable[Random.Range(0, Spawnable.Length)]; }
+    public static CardType RandomCard()
+    {
+        // Card types that were already used (Decoy / Girlfriend) can not be found any more.
+        var pool = new List<CardType>();
+        foreach (CardType t in Spawnable) if (!UsedCards.Contains(t)) pool.Add(t);
+        return pool[Random.Range(0, pool.Count)];
+    }
+
+    /// <summary>Card types the player already used up. They never show up in cabinets again (cleared at every match start).</summary>
+    public static readonly HashSet<CardType> UsedCards = new HashSet<CardType>();
 
     static readonly Vector2Int[] Dirs = { Vector2Int.up, Vector2Int.right, Vector2Int.down, Vector2Int.left };
 
@@ -51,6 +60,7 @@ public class SearchableSpawner : MonoBehaviour
 
     void Spawn()
     {
+        UsedCards.Clear();
         GridManager grid = GridManager.Instance;
         PlayerController player = PlayerController.Instance;
         if (grid == null) return;
@@ -328,7 +338,7 @@ public class SearchableSpawner : MonoBehaviour
         if (forceCard || r < cardChance) contents = SearchableObject.Contents.Card;
         else if (r < cardChance + drinkChance) contents = SearchableObject.Contents.EnergyDrink;
         CardType[] types = Spawnable;
-        so.Init(grid, tile, Random.value < 0.5f, contents, forceCard ? forcedType : types[Random.Range(0, types.Length)]);
+        so.Init(grid, tile, Random.value < 0.5f, contents, forceCard ? forcedType : RandomCard());
         return so;
     }
 }

@@ -13,7 +13,7 @@ public static class LevelTweaks
     static readonly string[] ClutterExact =
     {
         "CardboardBoxes", "Box", "Box_Open", "BrokenChair", "TrashPile", "Tire", "Pallet", "Plank",
-        "Bookcase_Fallen", "FileCabinet_Fallen", "Dresser_Tipped", "Bench_Fallen", "SmallTable", "Mattress",
+        "Bookcase_Fallen", "Wardrobe_Fallen", "FileCabinet_Fallen", "Dresser_Tipped", "Bench_Fallen", "SmallTable", "Mattress",
     };
 
     /// <summary>Props whose name starts with one of these are removed.</summary>
@@ -37,6 +37,69 @@ public static class LevelTweaks
         HasGate = false;
         RemoveClutter();
         BuildGarage();
+        OpenBedroomDoorway();
+    }
+
+    // ------------------------------------------------------------------ 3) bedroom doorway
+
+    // Doorway cut in the north wall (z = 20) where the curtain used to be: one tile wide (x 10..12),
+    // it joins the Bedroom with Bedroom 2 in the north wing.
+    const float DoorwayCenterX = 11f;
+    const float DoorwayHalf = 1f;
+    const float WallLineZ = 20f;
+
+    static void OpenBedroomDoorway()
+    {
+        // 1) the curtain hiding spot at (10, 19) goes away
+        int curtains = 0;
+        foreach (HidingSpot hs in Object.FindObjectsByType<HidingSpot>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        {
+            if (hs.spotType != HidingSpot.SpotType.Curtain) continue;
+            Vector3 p = hs.transform.position;
+            if (Mathf.Abs(p.x - 10f) > 1.5f || Mathf.Abs(p.z - 19f) > 1.5f) continue;
+            hs.gameObject.SetActive(false);
+            curtains++;
+        }
+
+        // 2) the wall piece (and its baseboard) in front of it is cut open
+        float x0 = DoorwayCenterX - DoorwayHalf, x1 = DoorwayCenterX + DoorwayHalf;
+        int cut = 0;
+        foreach (Transform t in Object.FindObjectsByType<Transform>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        {
+            bool wall = t.name.StartsWith("Wall_North");
+            bool baseboard = t.name == "Baseboard" && t.parent != null && t.parent.name == "Trim";
+            if (!wall && !baseboard) continue;
+            Renderer r = t.GetComponent<Renderer>();
+            if (r == null) continue;
+            Bounds b = r.bounds;
+            if (b.size.x < b.size.z) continue;                       // only pieces running along X
+            if (Mathf.Abs(b.center.z - WallLineZ) > 0.3f) continue;  // only on the z = 20 line
+            if (b.min.x >= x0 - 0.01f || b.max.x <= x1 + 0.01f) continue; // must span the whole doorway
+            CutX(t, b, x0, x1);
+            cut++;
+        }
+        Debug.Log($"[LevelTweaks] Bedroom doorway at x={DoorwayCenterX}: removed {curtains} curtain, cut {cut} wall piece(s).");
+    }
+
+    /// <summary>Replaces one wall piece by two, leaving the gap x0..x1 open.</summary>
+    static void CutX(Transform t, Bounds b, float x0, float x1)
+    {
+        float total = b.size.x;
+        MakePiece(t, b, b.min.x, x0, total);
+        MakePiece(t, b, x1, b.max.x, total);
+        t.gameObject.SetActive(false);
+    }
+
+    static void MakePiece(Transform src, Bounds b, float from, float to, float total)
+    {
+        if (to - from < 0.05f) return;
+        Transform n = Object.Instantiate(src.gameObject, src.parent).transform;
+        n.name = src.name;
+        n.gameObject.SetActive(true);
+        n.position = new Vector3((from + to) / 2f, src.position.y, src.position.z);
+        Vector3 sc = src.localScale;
+        sc.x *= (to - from) / total;
+        n.localScale = sc;
     }
 
     // ------------------------------------------------------------------ 1) clutter
