@@ -89,12 +89,37 @@ public class SearchableObject : MonoBehaviour
         }
         else if (contents == Contents.Card)
         {
-            CardType? old = player.AddCard(card);
             AudioManager.Play(AudioManager.Sfx.AllKeys);
-            string extra = old.HasValue && old.Value != card ? $"  (replaced {CardInfo.Name(old.Value)})" : "";
-            Toast($"Found card: {CardInfo.Name(card)} - {CardInfo.Description(card)}{extra}", CardInfo.Tint(card), 4f);
+            CardType? held = player.HeldCard;
+            if (held.HasValue && held.Value != card)
+            {
+                // Already holding a different card: the player chooses which one to keep.
+                bool tookNew = false;
+                yield return player.ChooseCard(card, r => tookNew = r);
+                if (tookNew)
+                    Toast($"Took card: {CardInfo.Name(card)} - {CardInfo.Description(card)}  (dropped {CardInfo.Name(held.Value)})", CardInfo.Tint(card), 4f);
+                else
+                    Toast($"Kept card: {CardInfo.Name(held.Value)}  (left {CardInfo.Name(card)} behind)", CardInfo.Tint(held.Value), 3f);
+            }
+            else
+            {
+                player.AddCard(card);
+                string extra = held.HasValue ? "  (you already had one)" : "";
+                Toast($"Found card: {CardInfo.Name(card)} - {CardInfo.Description(card)}{extra}", CardInfo.Tint(card), 4f);
+            }
         }
         else Toast("Nothing but dust.", new Color(0.85f, 0.82f, 0.75f));
+    }
+
+    /// <summary>
+    /// After a Decoy was placed no more Decoys can be found: every cabinet that still holds one
+    /// gets another card instead.
+    /// </summary>
+    public static void RemoveDecoyCards()
+    {
+        foreach (SearchableObject o in All)
+            if (!o.IsSearched && o.contents == Contents.Card && o.card == CardType.Decoy)
+                o.card = SearchableSpawner.RandomCard();
     }
 
     static void Toast(string text, Color color, float seconds = 2.5f) { ShowToast(text, color, seconds); }

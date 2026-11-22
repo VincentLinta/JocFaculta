@@ -59,7 +59,7 @@ public class PlayerController : MonoBehaviour
     public bool IsEscaping => autoEscape;
     bool autoEscape;
 
-    // The player holds ONE card at a time: finding a new card replaces the old one.
+    // The player holds ONE card at a time: finding another one lets him choose which to keep.
     CardType? heldCard;
     public CardType? HeldCard => heldCard;
     /// <summary>The card the player holds (as a list of one, or empty).</summary>
@@ -75,6 +75,73 @@ public class PlayerController : MonoBehaviour
         heldCard = t;
         return old;
     }
+    // ---- Card choice: found a card while already holding another one ----
+    public const float ChoiceIntro = 0.4f;    // seconds the cards need to fly in
+    public const float ChoiceOutro = 0.3f;    // seconds of the pick animation
+    /// <summary>True while the "keep yours or take the new one" screen is open.</summary>
+    public bool CardChoiceActive { get; private set; }
+    public CardType ChoiceHeld { get; private set; }
+    public CardType ChoiceFound { get; private set; }
+    /// <summary>Seconds since the choice opened (real time, drives the UI animation).</summary>
+    public float ChoiceTime { get; private set; }
+    /// <summary>-1 = still deciding, 0 = keep the card in hand, 1 = take the found card.</summary>
+    public int ChoicePicked { get; private set; } = -1;
+    /// <summary>Seconds since the pick (0..ChoiceOutro).</summary>
+    public float ChoicePickTime { get; private set; }
+    public bool ChoiceCanPick => CardChoiceActive && ChoicePicked < 0 && ChoiceTime >= ChoiceIntro;
+
+    /// <summary>
+    /// Shows both cards and waits for the player to decide (1 / Left / A = keep, 2 / Right / D = take the new one,
+    /// or click a card). The game keeps running meanwhile. onDone(true) = the found card was taken.
+    /// </summary>
+    public IEnumerator ChooseCard(CardType found, System.Action<bool> onDone)
+    {
+        GameManager gm = GameManager.Instance;
+        if (!heldCard.HasValue) { heldCard = found; onDone?.Invoke(true); yield break; }
+
+        ChoiceHeld = heldCard.Value;
+        ChoiceFound = found;
+        ChoiceTime = 0f;
+        ChoicePickTime = 0f;
+        ChoicePicked = -1;
+        CardChoiceActive = true;
+
+        while (gm != null && gm.IsPlaying && ChoicePicked < 0)
+        {
+            ChoiceTime += Time.unscaledDeltaTime;
+            Keyboard kb = Keyboard.current;
+            if (kb != null && !gm.IsPaused)
+            {
+                if (kb.digit1Key.wasPressedThisFrame || kb.leftArrowKey.wasPressedThisFrame || kb.aKey.wasPressedThisFrame) PickCard(false);
+                else if (kb.digit2Key.wasPressedThisFrame || kb.rightArrowKey.wasPressedThisFrame || kb.dKey.wasPressedThisFrame) PickCard(true);
+            }
+            yield return null;
+        }
+
+        // Pick animation (cards fly to the HUD / get thrown away).
+        while (ChoicePicked >= 0 && ChoicePickTime < ChoiceOutro && gm != null && gm.IsPlaying)
+        {
+            ChoicePickTime += Time.unscaledDeltaTime;
+            yield return null;
+        }
+
+        bool tookNew = ChoicePicked == 1;
+        if (tookNew) heldCard = found;
+        CardChoiceActive = false;
+        ChoicePicked = -1;
+        onDone?.Invoke(tookNew);
+    }
+
+    /// <summary>Called by the keys above and by the card buttons. takeNew = true takes the found card.</summary>
+    public void PickCard(bool takeNew)
+    {
+        GameManager gm = GameManager.Instance;
+        if (!ChoiceCanPick || gm == null || gm.IsPaused) return;
+        ChoicePicked = takeNew ? 1 : 0;
+        ChoicePickTime = 0f;
+        AudioManager.Play(takeNew ? AudioManager.Sfx.AllKeys : AudioManager.Sfx.Key);
+    }
+
     /// <summary>Uses up the held card if it is this type. Returns false otherwise.</summary>
     public bool TryUseCard(CardType t)
     {
@@ -145,7 +212,9 @@ public class PlayerController : MonoBehaviour
         }
         if (kb != null && kb.fKey.wasPressedThisFrame)
         {
-            if (IsHidden) TriggerDecoy(); else PlaceDecoy();
+            if (IsHidden) TriggerDecoy();
+            else if (CardCount(CardType.Girlfriend) > 0) PlaceGirlfriend();
+            else PlaceDecoy();
             return;
         }
 
@@ -354,25 +423,67 @@ public class PlayerController : MonoBehaviour
         spot.PlaceDecoyMarker();
         placedDecoy = spot;
         decoyTriggered = false;
+        SearchableObject.RemoveDecoyCards(); // no more decoys to find in the cabinets
         AudioManager.Play(AudioManager.Sfx.Rustle);
         SearchableObject.ShowToast("Decoy placed. Hide, then press F to send the clown to it.", new Color(0.75f, 0.95f, 0.45f), 4f);
     }
 
-    /// <summary>F while hidden: the clown goes straight to the decoy, then carries on searching normally.</summary>
-    public void TriggerDecoy()
+    /// <summary>F while hidden: the clown goes straight to the decoy, then carries on searching normally. Returns true if it did.</summary>
+    public bool TriggerDecoy()
     {
         GameManager gm = GameManager.Instance;
-        if (gm == null || !gm.CanPlayerAct || IsBusy || !IsHidden || autoEscape || gm.EscapeActive) return;
-        if (placedDecoy == null || decoyTriggered) return; // nothing to trigger
+        if (gm == null || !gm.CanPlayerAct || IsBusy || !IsHidden || autoEscape || gm.EscapeActive) return false;
+        if (placedDecoy == null || decoyTriggered) return false; // nothing to trigger
         if (!placedDecoy.HasDecoy)
         {
             SearchableObject.ShowToast("The decoy is gone.", new Color(0.75f, 0.95f, 0.45f), 2.5f);
-            return;
+            return false;
         }
         decoyTriggered = true;
         if (KillerAI.Instance != null) KillerAI.Instance.LureTo(placedDecoy);
         AudioManager.Play(AudioManager.Sfx.Rustle);
         SearchableObject.ShowToast("Decoy triggered! The clown is heading there.", new Color(0.75f, 0.95f, 0.45f), 3.5f);
+        return true;
+    }
+
+    // ------------------------------------------------------------------ Girlfriend card
+
+    bool NearAnyHidingSpot(Vector2Int t)
+    {
+        foreach (HidingSpot s in HidingSpot.All)
+            if (s.enterPoint != null && s.IsInReach(t, grid)) return true;
+        return false;
+    }
+
+    /// <summary>
+    /// F with a Girlfriend card (not hidden): puts her down in front of the player, anywhere except next to a
+    /// hiding spot. She is a trap: when the clown comes close he is stunned.
+    /// </summary>
+    public void PlaceGirlfriend()
+    {
+        GameManager gm = GameManager.Instance;
+        if (gm == null || !gm.CanPlayerAct || IsBusy || IsHidden || autoEscape || CardCount(CardType.Girlfriend) <= 0) return;
+        Color pink = CardInfo.Tint(CardType.Girlfriend);
+
+        // One tile in front of the player if possible, otherwise on his own tile.
+        Vector2Int tile = Tile;
+        Vector3 f = transform.forward;
+        Vector2Int dir = Mathf.Abs(f.x) > Mathf.Abs(f.z)
+            ? new Vector2Int(f.x > 0f ? 1 : -1, 0)
+            : new Vector2Int(0, f.z > 0f ? 1 : -1);
+        Vector2Int ahead = Tile + dir;
+        if (grid.CanStep(Tile, ahead) && !NearAnyHidingSpot(ahead)) tile = ahead;
+
+        if (NearAnyHidingSpot(tile))
+        {
+            SearchableObject.ShowToast("Too close to a hiding spot - put her somewhere else.", pink, 2.5f);
+            return;
+        }
+
+        TryUseCard(CardType.Girlfriend); // used up when placed
+        Girlfriend.Create(grid.TileCenter(tile), tile);
+        AudioManager.Play(AudioManager.Sfx.Rustle);
+        SearchableObject.ShowToast("Girlfriend placed. If the clown walks past her, he gets stunned.", pink, 4f);
     }
 
     static void EscapeHint(string message)

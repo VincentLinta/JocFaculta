@@ -34,6 +34,23 @@ public class GameUI : MonoBehaviour
     Text toastText;
     Text cardsText;
 
+    // Card choice overlay (found a card while holding another).
+    class CardView
+    {
+        public RectTransform rt;
+        public CanvasGroup group;
+        public Image border;
+        public GameObject front, back;
+        public Text tag, title, desc, key;
+        public Image emblem;
+        public float hover;
+    }
+    GameObject ccRoot;
+    Image ccDim;
+    Text ccTitle;
+    CardView ccOld, ccNew;
+    bool ccWasOn;
+
     // Fight Back coin flip overlay.
     GameObject fbRoot;
     Image fbDim, fbCoin;
@@ -101,6 +118,7 @@ public class GameUI : MonoBehaviour
         if (gm == null || vignette == null) return;
 
         UpdateFightBack(gm);
+        UpdateCardChoice(player);
         bool canAct = gm.CanPlayerAct && player && !player.IsBusy;
 
         if (player)
@@ -142,12 +160,13 @@ public class GameUI : MonoBehaviour
                 if (kv.Value > 0)
                 {
                     string hex = ColorUtility.ToHtmlStringRGB(CardInfo.Tint(kv.Key));
-                    string key = kv.Key == CardType.Escape && gm.CanUseEscape ? "  [Q]" : (kv.Key == CardType.Decoy ? "  [F]" : "");
+                    string key = kv.Key == CardType.Escape && gm.CanUseEscape ? "  [Q]" : (kv.Key == CardType.Decoy || kv.Key == CardType.Girlfriend ? "  [F]" : "");
                     sb.Append("<color=#").Append(hex).Append(">CARD  ").Append(CardInfo.Name(kv.Key)).Append(key).Append("</color>\n");
                 }
             if (player.CanTriggerDecoy) sb.Append("<color=#BFF273>DECOY PLACED  [F] when hidden</color>\n");
             cardsText.text = sb.ToString().TrimEnd('\n');
             cardsText.color = Color.white;
+            cardsText.enabled = !player.CardChoiceActive; // the card is on the choice screen
         }
         bool toast = Time.time < SearchableObject.ToastUntil && !string.IsNullOrEmpty(SearchableObject.ToastText);
         toastText.text = toast ? SearchableObject.ToastText : "";
@@ -380,7 +399,9 @@ public class GameUI : MonoBehaviour
         if (player.IsHidden && player.CanTriggerDecoy) return "Press F to send the clown to your decoy";
         if (player.IsHidden) return hiding ? "Hidden - wait for the clown" : (player.IsLockedIn ? "Hidden - stay quiet and hope he misses you" : "Hidden - stay quiet (E to leave)");
         if (player.AvailableSpot) return player.CardCount(CardType.Decoy) > 0 ? "Press E to hide   |   Press F to place the decoy" : "Press E to hide";
-        if (player.AvailableSearchable) return "Press E to search";
+        bool gf = player.CardCount(CardType.Girlfriend) > 0;
+        if (player.AvailableSearchable) return gf ? "Press E to search   |   Press F to place your girlfriend" : "Press E to search";
+        if (gf) return "Press F to place your girlfriend here (not next to a hiding spot)";
         return hiding ? "Click to walk, hold Space to run - find a hiding spot" : "Stay out of his sight - hide!";
     }
 
@@ -432,7 +453,7 @@ public class GameUI : MonoBehaviour
         Place(checkedText.rectTransform, new Vector2(0f, 1f), new Vector2(40f, -90f), new Vector2(500f, 34f));
         checkedText.enabled = false;
 
-        Text controls = MakeText("Controls", root, "Click: walk | Space/Shift: run | E: hide / search | Q: Escape card | F: place / trigger Decoy | Right mouse + drag: camera | Wheel: zoom", 20, TextAnchor.MiddleCenter);
+        Text controls = MakeText("Controls", root, "Click: walk | Space/Shift: run | E: hide / search | Q: Escape card | F: place Decoy / Girlfriend (trap) | Right mouse + drag: camera | Wheel: zoom", 20, TextAnchor.MiddleCenter);
         Place(controls.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 12f), new Vector2(1400f, 28f));
         controls.color = new Color(0.9f, 0.88f, 0.82f, 0.55f);
 
@@ -481,6 +502,7 @@ public class GameUI : MonoBehaviour
             () => { if (PlayerController.Instance) PlayerController.Instance.HideOrExit(); });
 
         BuildFightBack(root);
+        BuildCardChoice(root);
         pausePanel = MakePausePanel(root);
         losePanel = MakeEndPanel(root, "GameOver", "YOU DIED", new Color(0.85f, 0.1f, 0.1f), "Retry", out loseMessage);
         winPanel = MakeEndPanel(root, "Win", "YOU SURVIVED", new Color(0.3f, 0.9f, 0.4f), "Play Again", out winMessage);
@@ -511,6 +533,188 @@ public class GameUI : MonoBehaviour
         fbResult = MakeText("FBResult", fbDim.rectTransform, "", 64, TextAnchor.MiddleCenter);
         Place(fbResult.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -230f), new Vector2(1400f, 100f));
         fbRoot.SetActive(false);
+    }
+
+
+    // ------------------------------------------------------------------ card choice
+
+    const float CardW = 340f, CardH = 480f;
+
+    void BuildCardChoice(RectTransform root)
+    {
+        ccDim = MakeImage("CardChoice", root, Color.clear);
+        Stretch(ccDim.rectTransform);
+        ccRoot = ccDim.gameObject;
+
+        ccTitle = MakeText("CCTitle", ccDim.rectTransform, "KEEP YOUR CARD OR TAKE THE NEW ONE", 56, TextAnchor.MiddleCenter);
+        Place(ccTitle.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 330f), new Vector2(1600f, 90f));
+
+        ccOld = BuildCardView(ccDim.rectTransform, "OldCard", false);
+        ccNew = BuildCardView(ccDim.rectTransform, "NewCard", true);
+        ccRoot.SetActive(false);
+    }
+
+    CardView BuildCardView(RectTransform parent, string name, bool isNew)
+    {
+        var v = new CardView();
+        v.border = MakeImage(name, parent, Color.white);
+        v.rt = v.border.rectTransform;
+        Place(v.rt, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(CardW, CardH));
+        v.group = v.border.gameObject.AddComponent<CanvasGroup>();
+
+        // Back of the card (shown while the new card is mid-flip).
+        var backGO = new GameObject("Back", typeof(RectTransform));
+        backGO.transform.SetParent(v.rt, false);
+        Stretch((RectTransform)backGO.transform);
+        v.back = backGO;
+        Image backFill = MakeImage("Fill", backGO.transform, new Color(0.16f, 0.1f, 0.1f));
+        Stretch(backFill.rectTransform);
+        backFill.rectTransform.offsetMin = new Vector2(10f, 10f);
+        backFill.rectTransform.offsetMax = new Vector2(-10f, -10f);
+        Text mark = MakeText("Mark", backGO.transform, "?", 160, TextAnchor.MiddleCenter);
+        Stretch(mark.rectTransform);
+        mark.color = new Color(0.7f, 0.6f, 0.5f);
+
+        // Front of the card (clickable).
+        var frontGO = new GameObject("Front", typeof(RectTransform));
+        frontGO.transform.SetParent(v.rt, false);
+        Stretch((RectTransform)frontGO.transform);
+        v.front = frontGO;
+        Image body = MakeImage("Body", frontGO.transform, new Color(0.1f, 0.075f, 0.075f, 1f));
+        body.raycastTarget = true;
+        Stretch(body.rectTransform);
+        body.rectTransform.offsetMin = new Vector2(10f, 10f);
+        body.rectTransform.offsetMax = new Vector2(-10f, -10f);
+        Button btn = body.gameObject.AddComponent<Button>();
+        btn.targetGraphic = body;
+        btn.transition = Selectable.Transition.None;
+        bool takeNew = isNew;
+        btn.onClick.AddListener(() => { if (PlayerController.Instance) PlayerController.Instance.PickCard(takeNew); });
+
+        v.tag = MakeText("Tag", frontGO.transform, isNew ? "FOUND" : "YOUR CARD", 30, TextAnchor.MiddleCenter);
+        Place(v.tag.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 200f), new Vector2(300f, 40f));
+
+        v.emblem = MakeImage("Emblem", frontGO.transform, Color.white);
+        v.emblem.sprite = MakeCircleSprite();
+        Place(v.emblem.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 105f), new Vector2(120f, 120f));
+
+        v.title = MakeText("Name", frontGO.transform, "", 46, TextAnchor.MiddleCenter);
+        Place(v.title.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 10f), new Vector2(310f, 60f));
+
+        v.desc = MakeText("Desc", frontGO.transform, "", 25, TextAnchor.UpperCenter);
+        v.desc.horizontalOverflow = HorizontalWrapMode.Wrap;
+        Place(v.desc.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -115f), new Vector2(290f, 150f));
+
+        v.key = MakeText("Key", frontGO.transform, isNew ? "TAKE   [2] / [D]" : "KEEP   [1] / [A]", 28, TextAnchor.MiddleCenter);
+        Place(v.key.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -200f), new Vector2(310f, 40f));
+        return v;
+    }
+
+    void FillCardView(CardView v, CardType type)
+    {
+        Color tint = CardInfo.Tint(type);
+        v.title.text = CardInfo.Name(type);
+        v.title.color = tint;
+        v.desc.text = CardInfo.Description(type);
+        v.emblem.color = new Color(tint.r, tint.g, tint.b, 0.9f);
+        v.key.color = tint;
+    }
+
+    static float EaseOut(float k) { k = Mathf.Clamp01(k); return 1f - Mathf.Pow(1f - k, 3f); }
+
+    /// <summary>
+    /// Both cards fly in (the found one flips over), you pick one: the chosen card flies to the HUD, the other is thrown away.
+    /// </summary>
+    void UpdateCardChoice(PlayerController player)
+    {
+        if (ccRoot == null) return;
+        bool on = player != null && player.CardChoiceActive;
+        if (ccRoot.activeSelf != on) ccRoot.SetActive(on);
+        if (!on) { ccWasOn = false; return; }
+
+        if (!ccWasOn)
+        {
+            ccWasOn = true;
+            ccOld.hover = ccNew.hover = 0f;
+            FillCardView(ccOld, player.ChoiceHeld);
+            FillCardView(ccNew, player.ChoiceFound);
+        }
+
+        float t = player.ChoiceTime;
+        int picked = player.ChoicePicked;
+        float u = picked >= 0 ? Mathf.Clamp01(player.ChoicePickTime / PlayerController.ChoiceOutro) : 0f;
+        float uEase = u * u; // accelerates towards the end
+
+        // Where the HUD card text sits (target of the flying card), in the overlay's local space.
+        Vector2 hudPos = new Vector2(-760f, -400f);
+        if (RectTransformUtility.ScreenPointToLocalPointInRectangle(ccDim.rectTransform,
+                RectTransformUtility.WorldToScreenPoint(null, cardsText.rectTransform.position), null, out Vector2 local))
+            hudPos = local + new Vector2(140f, 35f);
+
+        float I = PlayerController.ChoiceIntro; // all fly-in times are fractions of it
+        float dim = 0.65f * EaseOut(t / (0.47f * I)) * (1f - uEase);
+        ccDim.color = new Color(0f, 0f, 0f, dim);
+        float textA = EaseOut(t / (0.53f * I)) * (1f - Mathf.Clamp01(u * 2.5f));
+        ccTitle.color = new Color(TextColor.r, TextColor.g, TextColor.b, textA);
+
+        // Old card: slides out of the HUD to the left slot.
+        float kOld = EaseOut(t / (0.73f * I));
+        AnimateCard(ccOld, Vector2.Lerp(hudPos, new Vector2(-230f, 0f), kOld), Mathf.Lerp(0.35f, 1f, kOld), 1f, kOld, picked, 0, u, hudPos, player);
+
+        // New card: flies up from the bottom, flipping over, to the right slot.
+        float kNew = EaseOut((t - 0.2f * I) / (0.8f * I));
+        Vector2 newPos = Vector2.Lerp(new Vector2(0f, -430f), new Vector2(230f, 0f), kNew) + Vector2.up * (Mathf.Sin(kNew * Mathf.PI) * 90f);
+        float flip = Mathf.Cos((1f - kNew) * Mathf.PI * 2.5f);
+        AnimateCard(ccNew, newPos, Mathf.Lerp(0.4f, 1f, kNew), flip, kNew, picked, 1, u, hudPos, player);
+    }
+
+    void AnimateCard(CardView v, Vector2 pos, float scale, float flipCos, float appear,
+                     int picked, int index, float u, Vector2 hudPos, PlayerController player)
+    {
+        float alpha = Mathf.Clamp01(appear * 3f);
+        float rot = 0f;
+        bool interactive = player.ChoiceCanPick;
+
+        // Hover (mouse over the card) lifts it a little.
+        var mouse = UnityEngine.InputSystem.Mouse.current;
+        bool over = interactive && mouse != null
+                    && RectTransformUtility.RectangleContainsScreenPoint(v.rt, mouse.position.ReadValue(), null);
+        v.hover = Mathf.MoveTowards(v.hover, over ? 1f : 0f, Time.unscaledDeltaTime * 8f);
+
+        if (picked < 0)
+        {
+            if (interactive) pos.y += Mathf.Sin(Time.unscaledTime * 2f + index * 1.7f) * 6f; // gentle float
+            scale *= 1f + 0.07f * v.hover;
+        }
+        else if (picked == index)
+        {
+            // Chosen: shrinks and flies to the HUD card slot, fading at the very end.
+            float k = u * u * (3f - 2f * u);
+            pos = Vector2.Lerp(pos, hudPos, k);
+            scale = Mathf.Lerp(scale * 1.07f, 0.28f, k);
+            alpha = 1f - Mathf.Clamp01((u - 0.8f) / 0.2f);
+        }
+        else
+        {
+            // Not chosen: tossed away (tilts, falls, fades).
+            pos += new Vector2(index == 0 ? -140f : 140f, -260f) * (u * u);
+            rot = (index == 0 ? 25f : -25f) * u;
+            scale *= Mathf.Lerp(1f, 0.6f, u);
+            alpha = 1f - u;
+        }
+
+        bool frontSide = flipCos >= 0f;
+        v.front.SetActive(frontSide);
+        v.back.SetActive(!frontSide);
+        Color tint = CardInfo.Tint(index == 0 ? player.ChoiceHeld : player.ChoiceFound);
+        Color edge = frontSide ? Color.Lerp(tint, Color.white, 0.45f * v.hover) : new Color(0.5f, 0.42f, 0.35f);
+        v.border.color = edge;
+
+        v.rt.anchoredPosition = pos;
+        v.rt.localRotation = Quaternion.Euler(0f, 0f, rot);
+        v.rt.localScale = new Vector3(scale * Mathf.Max(0.04f, Mathf.Abs(flipCos)), scale, 1f);
+        v.group.alpha = alpha;
+        v.group.blocksRaycasts = interactive;
     }
 
     static Sprite MakeCircleSprite()

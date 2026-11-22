@@ -19,6 +19,8 @@ public class KillerAI : MonoBehaviour
     [Header("Movement (world units per second, one tile = 2 units)")]
     public float walkSpeed = 6.5f;
     public float chaseSpeed = 7.5f;
+    [Tooltip("Multiplies his walking and chasing speed (1 = the speeds above).")]
+    public float speedMultiplier = 1.15f;
 
     [Header("Senses")]
     public float viewDistance = 13f;
@@ -100,6 +102,10 @@ public class KillerAI : MonoBehaviour
     HidingSpot targetSpot;
     HidingSpot lureSpot;    // a Decoy card was placed here: he goes there first (even if checked before)
     HidingSpot pendingLure; // decoy placed before he spawned
+    float stunTimer;
+    GameObject stunStars;
+    /// <summary>True while a Girlfriend has stunned him.</summary>
+    public bool IsStunned => stunTimer > 0f;
     HidingSpot witnessedSpot;
     List<Vector2Int> path;
     int pathIndex;
@@ -158,6 +164,16 @@ public class KillerAI : MonoBehaviour
         GameManager gm = GameManager.Instance;
         if (gm == null || !gm.IsPlaying || gm.IsPaused) return;
         float dt = Time.deltaTime;
+
+        // Stunned by the Girlfriend: he stands still (and cannot catch anyone).
+        if (stunTimer > 0f)
+        {
+            stunTimer -= dt;
+            if (stunStars != null) stunStars.transform.Rotate(0f, 420f * dt, 0f, Space.Self);
+            if (stunTimer <= 0f) EndStun();
+            UpdateArm(dt);
+            return;
+        }
 
         if (EscapeMode)
         {
@@ -337,7 +353,7 @@ public class KillerAI : MonoBehaviour
     void UpdateSearch(float dt)
     {
         if (targetSpot == null || path == null) return;
-        if (Follow(walkSpeed, dt)) ArriveAtSpot();
+        if (Follow(walkSpeed * speedMultiplier, dt)) ArriveAtSpot();
     }
 
     void ArriveAtSpot()
@@ -443,7 +459,7 @@ public class KillerAI : MonoBehaviour
             path = grid.FindPath(CurrentTile, lastSeenTile);
             pathIndex = 0;
         }
-        if (path != null) Follow(chaseSpeed, dt);
+        if (path != null) Follow(chaseSpeed * speedMultiplier, dt);
 
         Vector3 flat = player.transform.position - transform.position;
         flat.y = 0f;
@@ -602,6 +618,45 @@ public class KillerAI : MonoBehaviour
         priority.Insert(0, spot);
         // Walking to another spot: turn around now. Busy checking or chasing: he gets there afterwards.
         if (CurrentState == State.Search) GoToNextSpot();
+    }
+
+    /// <summary>Freezes him for a few seconds (stars spin over his head).</summary>
+    public void Stun(float seconds)
+    {
+        if (!hunting) return;
+        stunTimer = Mathf.Max(stunTimer, seconds);
+        if (stunStars == null) BuildStars();
+        AudioManager.PlayAt(AudioManager.Sfx.KillerHonk, transform.position);
+    }
+
+    void EndStun()
+    {
+        stunTimer = 0f;
+        if (stunStars != null) Destroy(stunStars);
+        stunStars = null;
+    }
+
+    void BuildStars()
+    {
+        stunStars = new GameObject("StunStars");
+        stunStars.transform.SetParent(transform, false);
+        stunStars.transform.localPosition = new Vector3(0f, 3.4f, 0f);
+        Shader sh = Shader.Find("Universal Render Pipeline/Lit");
+        if (sh == null) sh = Shader.Find("Standard");
+        var mat = new Material(sh);
+        Color c = new Color(1f, 0.9f, 0.25f);
+        mat.color = c;
+        if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", c);
+        for (int i = 0; i < 3; i++)
+        {
+            GameObject s = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            s.transform.SetParent(stunStars.transform, false);
+            float a = i * Mathf.PI * 2f / 3f;
+            s.transform.localPosition = new Vector3(Mathf.Cos(a) * 0.7f, 0f, Mathf.Sin(a) * 0.7f);
+            s.transform.localScale = Vector3.one * 0.3f;
+            s.GetComponent<Renderer>().sharedMaterial = mat;
+            Destroy(s.GetComponent<Collider>());
+        }
     }
 
     /// <summary>
