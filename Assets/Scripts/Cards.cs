@@ -24,7 +24,7 @@ public static class CardInfo
             case CardType.Fortify: return "the clown searches your hiding spot much slower";
             case CardType.Escape: return "opens a random exit when you hide; Q = run to it, but the clown rushes you";
             case CardType.FightBack: return "if the clown finds you, you have a 50% chance to beat him and win";
-            case CardType.Decoy: return "next to a hiding spot press F: the clown goes straight there, then keeps searching";
+            case CardType.Decoy: return "F at a hiding spot places it; hide, press F again and the clown goes there first";
             default: return "";
         }
     }

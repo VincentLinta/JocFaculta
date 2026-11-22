@@ -145,7 +145,7 @@ public class PlayerController : MonoBehaviour
         }
         if (kb != null && kb.fKey.wasPressedThisFrame)
         {
-            PlaceDecoy();
+            if (IsHidden) TriggerDecoy(); else PlaceDecoy();
             return;
         }
 
@@ -323,7 +323,18 @@ public class PlayerController : MonoBehaviour
         gm.ActivateEscape();
     }
 
-    /// <summary>F: places the Decoy card at the hiding spot next to the player. The clown goes straight there.</summary>
+    // ------------------------------------------------------------------ Decoy card
+
+    HidingSpot placedDecoy;
+    bool decoyTriggered;
+
+    /// <summary>True while a placed decoy is waiting: from a hiding spot, F sends the clown to it.</summary>
+    public bool CanTriggerDecoy => placedDecoy != null && placedDecoy.HasDecoy && !decoyTriggered;
+
+    /// <summary>
+    /// F next to a hiding spot (not hidden): puts the Decoy card there. The card is used up, but nothing happens yet:
+    /// hide somewhere, then press F again to make the clown go to the decoy.
+    /// </summary>
     public void PlaceDecoy()
     {
         GameManager gm = GameManager.Instance;
@@ -333,12 +344,35 @@ public class PlayerController : MonoBehaviour
             SearchableObject.ShowToast("Go next to a hiding spot to place the decoy.", new Color(0.75f, 0.95f, 0.45f), 2.5f);
             return;
         }
+        if (CanTriggerDecoy)
+        {
+            SearchableObject.ShowToast("Your other decoy is still waiting.", new Color(0.75f, 0.95f, 0.45f), 2.5f);
+            return;
+        }
         HidingSpot spot = AvailableSpot;
         TryUseCard(CardType.Decoy); // used up when placed
         spot.PlaceDecoyMarker();
+        placedDecoy = spot;
+        decoyTriggered = false;
         AudioManager.Play(AudioManager.Sfx.Rustle);
-        if (KillerAI.Instance != null) KillerAI.Instance.LureTo(spot);
-        SearchableObject.ShowToast("Decoy placed! The clown is heading there.", new Color(0.75f, 0.95f, 0.45f), 3.5f);
+        SearchableObject.ShowToast("Decoy placed. Hide, then press F to send the clown to it.", new Color(0.75f, 0.95f, 0.45f), 4f);
+    }
+
+    /// <summary>F while hidden: the clown goes straight to the decoy, then carries on searching normally.</summary>
+    public void TriggerDecoy()
+    {
+        GameManager gm = GameManager.Instance;
+        if (gm == null || !gm.CanPlayerAct || IsBusy || !IsHidden || autoEscape || gm.EscapeActive) return;
+        if (placedDecoy == null || decoyTriggered) return; // nothing to trigger
+        if (!placedDecoy.HasDecoy)
+        {
+            SearchableObject.ShowToast("The decoy is gone.", new Color(0.75f, 0.95f, 0.45f), 2.5f);
+            return;
+        }
+        decoyTriggered = true;
+        if (KillerAI.Instance != null) KillerAI.Instance.LureTo(placedDecoy);
+        AudioManager.Play(AudioManager.Sfx.Rustle);
+        SearchableObject.ShowToast("Decoy triggered! The clown is heading there.", new Color(0.75f, 0.95f, 0.45f), 3.5f);
     }
 
     static void EscapeHint(string message)
