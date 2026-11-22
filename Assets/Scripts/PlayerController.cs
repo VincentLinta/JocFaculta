@@ -413,8 +413,8 @@ public class PlayerController : MonoBehaviour
 
     public const float FlashSeconds = 4f;      // how long the clown is blinded
     public const float FlashRangeTiles = 6f;   // "close" = within this many tiles (or he is checking your spot)
-    const int FlashMaxPath = 18;               // the new hiding spot must be at most this many tiles away
-    const int FlashMinKillerTiles = 3;         // ... and at least this far from the clown
+    const int FlashPoolSize = 4;               // he runs to one of this many nearest (unchecked) hiding spots, at random
+    const int FlashMinKillerTiles = 3;         // the new spot must be at least this far from the clown
 
     /// <summary>Time.time of the last flash (the HUD fades a white flash from it).</summary>
     public static float LastFlashTime = -999f;
@@ -480,27 +480,26 @@ public class PlayerController : MonoBehaviour
         flashState = 2;
     }
 
-    /// <summary>Best nearby free hiding spot: close to the player, far from the clown, checked spots preferred.</summary>
+    /// <summary>
+    /// One of the 4 nearest free hiding spots (by walking distance), picked at random.
+    /// Spots the clown already checked are never used, nor the one he is checking now or ones right next to him.
+    /// </summary>
     HidingSpot FindFlashDestination(Vector2Int fromTile, HidingSpot from, KillerAI killer)
     {
-        HidingSpot best = null;
-        float bestScore = float.MaxValue;
+        var options = new List<KeyValuePair<HidingSpot, int>>();
         Vector2Int kt = killer.Tile;
         foreach (HidingSpot s in HidingSpot.All)
         {
-            if (s == from || s.isOccupied || s.enterPoint == null || s == killer.CheckingSpot) continue;
-            int killerDist = GridManager.Chebyshev(kt, s.Tile);
-            if (killerDist < FlashMinKillerTiles) continue;
+            if (s == from || s.isOccupied || s.enterPoint == null || s.IsChecked || s == killer.CheckingSpot) continue;
+            if (GridManager.Chebyshev(kt, s.Tile) < FlashMinKillerTiles) continue;
             List<Vector2Int> p = grid.FindPath(fromTile, s.Tile);
-            if (p == null || p.Count > FlashMaxPath) continue;
-            float score = p.Count - killerDist * 0.5f - (s.IsChecked ? 5f : 0f); // he already checked it: safer
-            if (score < bestScore)
-            {
-                bestScore = score;
-                best = s;
-            }
+            if (p == null) continue;
+            options.Add(new KeyValuePair<HidingSpot, int>(s, p.Count));
         }
-        return best;
+        if (options.Count == 0) return null;
+        options.Sort((x, y) => x.Value.CompareTo(y.Value));
+        int pool = Mathf.Min(FlashPoolSize, options.Count);
+        return options[Random.Range(0, pool)].Key;
     }
 
     void UpdateFlashRun()

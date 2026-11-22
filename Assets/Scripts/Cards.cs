@@ -28,7 +28,7 @@ public static class CardInfo
             case CardType.FightBack: return "if the clown finds you, you have a 50% chance to beat him and win";
             case CardType.Decoy: return "F at a hiding spot places it; hide, press F again and the clown goes there first";
             case CardType.Girlfriend: return "F places her as a trap anywhere (not next to a hiding spot); if the clown walks past her he is stunned for 2s while she tells him off";
-            case CardType.Flashbang: return "G when hidden and the clown is at your spot or close: he is blinded for a few seconds and you run to another hiding spot nearby by yourself";
+            case CardType.Flashbang: return "G when hidden and the clown is at your spot or close: he is blinded for a few seconds and you run to another hiding spot";
             default: return "";
         }
     }
