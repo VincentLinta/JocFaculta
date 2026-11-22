@@ -36,6 +36,7 @@ public static class LevelTweaks
     {
         HasGate = false;
         RemoveClutter();
+        RemoveGarageProps();
         BuildGarage();
         OpenBedroomDoorway();
         RemoveVents();
@@ -139,6 +140,30 @@ public static class LevelTweaks
             removed++;
         }
         Debug.Log($"[LevelTweaks] Removed {removed} loose props.");
+    }
+
+    // ------------------------------------------------------------------ 1b) garage crate
+
+    // The garage room on the floor plan (x -30..-12, z 20..30).
+    const float GarageX0 = -30f, GarageX1 = -12f, GarageZ0 = 20f, GarageZ1 = 30f;
+
+    /// <summary>
+    /// Removes only the big crate stack in the garage (a "behind the crate" hiding spot): the player could hide
+    /// there on the way to the car and it got in the way. The spot is switched off, like the vents.
+    /// Everything else in the garage (workbench, car, locker ...) stays as it is.
+    /// </summary>
+    static void RemoveGarageProps()
+    {
+        int spots = 0;
+        foreach (HidingSpot hs in Object.FindObjectsByType<HidingSpot>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        {
+            if (hs.spotType != HidingSpot.SpotType.BehindCrate) continue;
+            Vector3 p = hs.transform.position;
+            if (p.x < GarageX0 || p.x > GarageX1 || p.z < GarageZ0 || p.z > GarageZ1) continue;
+            hs.gameObject.SetActive(false);
+            spots++;
+        }
+        Debug.Log($"[LevelTweaks] Garage: removed {spots} crate hiding spot(s).");
     }
 
     // ------------------------------------------------------------------ 2) garage

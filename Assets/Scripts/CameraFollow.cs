@@ -4,7 +4,7 @@ using UnityEngine.InputSystem;
 /// <summary>
 /// Isometric camera that follows the target (the player), and switches to the killer
 /// while he is hunting (chase phase), so you can watch him search.
-/// Right mouse button + drag: orbit around the player (limited).
+/// Right mouse button + drag: orbit around the player (full 360 degrees horizontally, pitch limited).
 /// Mouse wheel: zoom in / out (limited).
 /// Uses only the new Input System (the legacy UnityEngine.Input class is disabled in this project).
 /// </summary>
@@ -28,7 +28,9 @@ public class CameraFollow : MonoBehaviour
     [Header("Rotation (right mouse button + drag)")]
     [Tooltip("Degrees per pixel of mouse movement.")]
     public float rotationSpeed = 0.2f;
-    [Tooltip("Max degrees left/right from the start angle.")]
+    [Tooltip("If true, the camera can circle all the way around the player.")]
+    public bool unlimitedYaw = true;
+    [Tooltip("Only used when Unlimited Yaw is off: max degrees left/right from the start angle.")]
     public float maxYawOffset = 50f;
     [Tooltip("Max degrees the camera can go DOWN (flatter view) from the start angle.")]
     public float maxPitchDown = 20f;
@@ -104,8 +106,7 @@ public class CameraFollow : MonoBehaviour
                 Vector2 delta = mouse.delta.ReadValue();
                 yaw += delta.x * rotationSpeed;
                 pitch -= delta.y * rotationSpeed;
-                yaw = Mathf.Clamp(yaw, baseYaw - maxYawOffset, baseYaw + maxYawOffset);
-                pitch = Mathf.Clamp(pitch, basePitch - maxPitchDown, basePitch + maxPitchUp);
+                ClampAngles();
             }
 
             // Zoom with the wheel; only the sign is used, so every mouse/OS behaves the same.
@@ -140,6 +141,13 @@ public class CameraFollow : MonoBehaviour
         followVelocity = Vector3.zero;
         switchUntil = 0f;
         ApplyTransform();
+    }
+
+    void ClampAngles()
+    {
+        if (unlimitedYaw) yaw = Mathf.Repeat(yaw, 360f);
+        else yaw = Mathf.Clamp(yaw, baseYaw - maxYawOffset, baseYaw + maxYawOffset);
+        pitch = Mathf.Clamp(pitch, basePitch - maxPitchDown, basePitch + maxPitchUp);
     }
 
     void ApplyTransform()
