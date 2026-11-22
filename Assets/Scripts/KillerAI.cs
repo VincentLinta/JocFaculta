@@ -165,6 +165,7 @@ public class KillerAI : MonoBehaviour
 
         GameManager gm = GameManager.Instance;
         if (gm == null || !gm.IsPlaying || gm.IsPaused) return;
+        if (gm.PoliceArriving) return; // the police are here: he does nothing
         float dt = Time.deltaTime;
 
         // Stunned by the Girlfriend: he stands still (and cannot catch anyone).
@@ -198,6 +199,24 @@ public class KillerAI : MonoBehaviour
 
         UpdateArm(dt);
         UpdateIdleSounds();
+    }
+
+    // ------------------------------------------------------------------ police
+
+    /// <summary>The police arrived: the clown runs away (he leaves the level, like before the hunt).</summary>
+    public void FleeFromPolice()
+    {
+        if (!hunting) return;
+        hunting = false;
+        EscapeMode = false;
+        targetSpot = null;
+        CheckingSpot = null;
+        CheckProgress = 0f;
+        CheckFortified = false;
+        CurrentState = State.Waiting;
+        DistanceToPlayer = 999f;
+        SetVisible(false);
+        transform.position = new Vector3(0f, -100f, 0f);
     }
 
     // ------------------------------------------------------------------ catching the player

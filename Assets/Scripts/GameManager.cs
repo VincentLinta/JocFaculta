@@ -149,8 +149,10 @@ public class GameManager : MonoBehaviour
     public string EndMessage { get; private set; } = "";
 
     public bool IsPlaying => State == GameState.Playing;
+    /// <summary>True while the police rescue scene plays (the search time ran out). The player and the clown are frozen.</summary>
+    public bool PoliceArriving { get; private set; }
     /// <summary>True when the player may move and use action keys.</summary>
-    public bool CanPlayerAct => IsPlaying && !IsPaused && !FightBackActive;
+    public bool CanPlayerAct => IsPlaying && !IsPaused && !FightBackActive && !PoliceArriving;
 
     float hiddenFor;
     int lastTickSecond = -1;
@@ -198,7 +200,7 @@ public class GameManager : MonoBehaviour
             if (!IsPlaying && kb.rKey.wasPressedThisFrame) Restart();
         }
 
-        if (!IsPlaying || IsPaused || IsRevealing || FightBackActive) return;
+        if (!IsPlaying || IsPaused || IsRevealing || FightBackActive || PoliceArriving) return;
 
         PhaseTimeLeft = Mathf.Max(0f, PhaseTimeLeft - Time.deltaTime);
         if (CurrentPhase == Phase.Hiding) UpdateHidingPhase();
@@ -207,8 +209,32 @@ public class GameManager : MonoBehaviour
             // Found an Escape card during the chase (while not hidden): the door opens now.
             PlayerController p = PlayerController.Instance;
             if (!EscapeArmed && p != null && p.CardCount(CardType.Escape) > 0) ArmEscape(2f);
-            if (PhaseTimeLeft <= 0f) Win("You survived. The clown did not find you.");
+            if (PhaseTimeLeft <= 0f) StartPoliceArrival();
         }
+    }
+
+    // ------------------------------------------------------------------ police rescue
+
+    /// <summary>The search time is over: the police come in through the main entrance, then the player wins.</summary>
+    void StartPoliceArrival()
+    {
+        if (PoliceArriving) return;
+        PoliceArrival police = PoliceArrival.Create();
+        if (police == null || !police.CanPlay)
+        {
+            // No entrance door found: fall back to the old ending.
+            Win("You survived. The clown did not find you.");
+            return;
+        }
+        PoliceArriving = true;
+        StartCoroutine(PoliceRoutine(police));
+    }
+
+    System.Collections.IEnumerator PoliceRoutine(PoliceArrival police)
+    {
+        yield return StartCoroutine(police.Run());
+        PoliceArriving = false;
+        Win("The police arrived and rescued you. The clown ran away.");
     }
 
     // ------------------------------------------------------------------ phases

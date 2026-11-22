@@ -215,6 +215,8 @@ public class GameUI : MonoBehaviour
     // ------------------------------------------------------------------ phases + check bar
 
     /// <summary>Phase timer, phase announcement, spots-checked counter and the bar above the spot the killer is checking.</summary>
+    bool policeBannerShown;
+
     void UpdatePhaseHud(GameManager gm, KillerAI killer)
     {
         bool hiding = gm.CurrentPhase == GameManager.Phase.Hiding;
@@ -224,6 +226,11 @@ public class GameUI : MonoBehaviour
         phaseText.text = hiding ? $"HIDE  {secs}s" : $"SURVIVE  {secs}s";
         if (hiding) phaseText.color = secs <= 10 ? new Color(1f, 0.35f, 0.25f) : new Color(0.6f, 0.95f, 0.7f);
         else phaseText.color = new Color(1f, 0.3f, 0.25f);
+        if (gm.PoliceArriving)
+        {
+            phaseText.text = "POLICE ARRIVED";
+            phaseText.color = new Color(0.45f, 0.7f, 1f);
+        }
 
         // Big announcement for 3 seconds whenever the phase changes (also at the start of the game).
         if ((int)gm.CurrentPhase != shownPhase)
@@ -232,13 +239,20 @@ public class GameUI : MonoBehaviour
             phaseBannerLeft = 3f;
             phaseBannerText = hiding ? "FIND A HIDING SPOT" : "THE CLOWN IS HERE";
         }
+        if (gm.PoliceArriving && !policeBannerShown)
+        {
+            policeBannerShown = true;
+            phaseBannerLeft = 3f;
+            phaseBannerText = "THE POLICE ARE HERE";
+        }
         phaseBannerLeft = Mathf.Max(0f, phaseBannerLeft - Time.deltaTime);
         float a = phaseBannerLeft <= 0f || !gm.IsPlaying ? 0f : Mathf.Min(1f, (3f - phaseBannerLeft) / 0.4f, phaseBannerLeft / 0.8f);
         phaseBanner.enabled = a > 0f;
         phaseBanner.text = phaseBannerText;
-        phaseBanner.color = hiding ? new Color(0.6f, 0.95f, 0.7f, a) : new Color(1f, 0.25f, 0.2f, a);
+        phaseBanner.color = gm.PoliceArriving ? new Color(0.45f, 0.7f, 1f, a)
+            : hiding ? new Color(0.6f, 0.95f, 0.7f, a) : new Color(1f, 0.25f, 0.2f, a);
 
-        checkedText.enabled = gm.IsPlaying && !hiding;
+        checkedText.enabled = gm.IsPlaying && !hiding && !gm.PoliceArriving;
         checkedText.text = $"SPOTS CHECKED {HidingSpot.CountChecked()}/{HidingSpot.All.Count}";
 
         // The killer's progress bar, drawn above the hiding spot he is checking.
