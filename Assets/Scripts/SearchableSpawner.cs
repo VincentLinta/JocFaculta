@@ -8,9 +8,9 @@ using UnityEngine;
 /// </summary>
 public class SearchableSpawner : MonoBehaviour
 {
-    public int count = 10;
+    public int count = 12;
     [Tooltip("At least this many objects always hold a card.")]
-    public int guaranteedCards = 4;
+    public int guaranteedCards = 6;
     [Tooltip("Chance (0-1) that any other object holds a card.")]
     public float cardChance = 0.15f;
     [Tooltip("Chance (0-1) that any other object holds an energy drink.")]

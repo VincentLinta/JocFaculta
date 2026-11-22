@@ -35,6 +35,8 @@ public class KillerAI : MonoBehaviour
     public float checkTime = 2.5f;
     [Tooltip("Fortify card: the check of the spot you hide in takes this many times longer.")]
     public float fortifyMultiplier = 2.5f;
+    [Tooltip("Fight Back card: chance (0-1) that the player beats the clown when he finds him.")]
+    [Range(0f, 1f)] public float fightBackChance = 0.5f;
     [Tooltip("Escape card: the clown runs at this many times the player's walk speed.")]
     public float escapeSpeedMultiplier = 2f;
     [Tooltip("How far the raised hand goes up (degrees).")]
@@ -172,6 +174,27 @@ public class KillerAI : MonoBehaviour
         UpdateIdleSounds();
     }
 
+    // ------------------------------------------------------------------ catching the player
+
+    /// <summary>
+    /// The clown has found the player. With a Fight Back card the player gets a coin flip
+    /// (fightBackChance): win the fight and win the game, or lose it and lose the game.
+    /// </summary>
+    void CatchPlayer(string message)
+    {
+        GameManager gm = GameManager.Instance;
+        if (gm == null || !gm.IsPlaying) return;
+        if (player != null && player.TryUseCard(CardType.FightBack))
+        {
+            bool won = Random.value < fightBackChance;
+            Debug.Log($"[FightBack] Fight back used: {(won ? "WON" : "LOST")}");
+            if (won) gm.Win("You fought back and beat the clown!");
+            else gm.Lose("You fought back... but the clown won.");
+            return;
+        }
+        gm.Lose(message);
+    }
+
     // ------------------------------------------------------------------ escape card
 
     /// <summary>Called when the player uses an Escape card: drop everything and run at the player.</summary>
@@ -207,7 +230,7 @@ public class KillerAI : MonoBehaviour
         if (!player.IsHidden && flat.magnitude < catchDistance)
         {
             FaceTowards(player.transform.position);
-            if (GameManager.Instance) GameManager.Instance.Lose("The clown caught you.");
+            CatchPlayer("The clown caught you.");
         }
     }
 
@@ -326,7 +349,7 @@ public class KillerAI : MonoBehaviour
 
         if (spot.isOccupied)
         {
-            if (GameManager.Instance) GameManager.Instance.Lose("The clown found your hiding spot.");
+            CatchPlayer("The clown found your hiding spot.");
             return;
         }
         GoToNextSpot();
@@ -383,7 +406,7 @@ public class KillerAI : MonoBehaviour
         if (sees && !player.IsHidden && flat.magnitude < catchDistance)
         {
             FaceTowards(player.transform.position);
-            if (GameManager.Instance) GameManager.Instance.Lose("The clown caught you.");
+            CatchPlayer("The clown caught you.");
         }
     }
 
