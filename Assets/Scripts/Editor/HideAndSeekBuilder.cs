@@ -831,13 +831,13 @@ public static class HideAndSeekBuilder
         Spot(root, 7, HidingSpot.SpotType.Wardrobe, 13.45f, 12f, 270f);    // Bedroom
         // (Spot 8, the Bedroom curtain at (10, 19), was removed: that tile is now a doorway into Bedroom 2)
         Spot(root, 9, HidingSpot.SpotType.Curtain, 27f, 18.5f, 180f);      // Bathroom (shower)
-        Spot(root, 10, HidingSpot.SpotType.Vent, 29.55f, 12f, 270f);       // Bathroom
-        Spot(root, 11, HidingSpot.SpotType.Vent, -29.55f, 4f, 90f);        // Corridor
+        // (Spot 10, a Vent, was removed)
+        // (Spot 11, a Vent, was removed)
         Spot(root, 12, HidingSpot.SpotType.Wardrobe, -29.45f, -5f, 90f);   // Safe room
         Spot(root, 13, HidingSpot.SpotType.UnderStairs, -27f, -19.1f, 0f); // Basement
         Spot(root, 14, HidingSpot.SpotType.Barrel, -20f, -19f, 0f);        // Basement
         Spot(root, 15, HidingSpot.SpotType.Locker, -12f, -19.55f, 0f);     // Boiler
-        Spot(root, 16, HidingSpot.SpotType.Vent, -6.45f, -4f, 270f);       // Boiler
+        // (Spot 16, a Vent, was removed)
         Spot(root, 17, HidingSpot.SpotType.UnderTable, 4f, -10f, 0f);      // Main hall
         Spot(root, 18, HidingSpot.SpotType.Curtain, 0f, -19f, 0f);         // Main hall (stage)
         Spot(root, 19, HidingSpot.SpotType.BehindCrate, 25f, 0.6f, 180f);  // Loading

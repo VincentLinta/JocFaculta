@@ -38,6 +38,22 @@ public static class LevelTweaks
         RemoveClutter();
         BuildGarage();
         OpenBedroomDoorway();
+        RemoveVents();
+    }
+
+    // ------------------------------------------------------------------ 4) vents
+
+    /// <summary>All vent hiding spots are taken out (they never register, so nobody can hide there or check them).</summary>
+    static void RemoveVents()
+    {
+        int removed = 0;
+        foreach (HidingSpot hs in Object.FindObjectsByType<HidingSpot>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        {
+            if (hs.spotType != HidingSpot.SpotType.Vent) continue;
+            hs.gameObject.SetActive(false);
+            removed++;
+        }
+        Debug.Log($"[LevelTweaks] Removed {removed} vent hiding spots.");
     }
 
     // ------------------------------------------------------------------ 3) bedroom doorway

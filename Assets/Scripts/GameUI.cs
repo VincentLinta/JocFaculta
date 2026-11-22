@@ -27,6 +27,7 @@ public class GameUI : MonoBehaviour
 
     Font font;
     Image vignette;
+    Image flashOverlay;
     Image hideOverlay;
     readonly Image[] staminaSegments = new Image[4];
     Text keysText;
@@ -160,7 +161,7 @@ public class GameUI : MonoBehaviour
                 if (kv.Value > 0)
                 {
                     string hex = ColorUtility.ToHtmlStringRGB(CardInfo.Tint(kv.Key));
-                    string key = kv.Key == CardType.Escape && gm.CanUseEscape ? "  [Q]" : (kv.Key == CardType.Decoy || kv.Key == CardType.Girlfriend ? "  [F]" : "");
+                    string key = kv.Key == CardType.Escape && gm.CanUseEscape ? "  [Q]" : (kv.Key == CardType.Decoy || kv.Key == CardType.Girlfriend ? "  [F]" : (kv.Key == CardType.Flashbang ? "  [G]" : ""));
                     sb.Append("<color=#").Append(hex).Append(">CARD  ").Append(CardInfo.Name(kv.Key)).Append(key).Append("</color>\n");
                 }
             if (player.CanTriggerDecoy) sb.Append("<color=#BFF273>DECOY PLACED  [F] when hidden</color>\n");
@@ -185,6 +186,14 @@ public class GameUI : MonoBehaviour
             if (chasing) alpha = Mathf.Max(alpha, 0.35f + 0.1f * Mathf.Sin(Time.unscaledTime * 6f));
         }
         vignette.color = new Color(0.7f, 0f, 0f, alpha);
+
+        // Flashbang: the screen flashes white and fades out.
+        if (flashOverlay != null)
+        {
+            float ft = Time.time - PlayerController.LastFlashTime;
+            float fa = ft < 0f || ft > 1.4f ? 0f : (ft < 0.15f ? 1f : 1f - (ft - 0.15f) / 1.25f);
+            flashOverlay.color = new Color(1f, 1f, 0.92f, fa * fa);
+        }
 
         // Menus.
         pausePanel.SetActive(gm.IsPaused);
@@ -396,6 +405,7 @@ public class GameUI : MonoBehaviour
         if (gm.EscapeActive) return "Running to the exit!";
         if (gm.EscapeArmed && player.IsHidden) return "Press Q to leave your hiding spot and run to the open door!";
         bool hiding = gm.CurrentPhase == GameManager.Phase.Hiding;
+        if (player.CanFlash) return "Press G to FLASH the clown and run to another hiding spot!";
         if (player.IsHidden && player.CanTriggerDecoy) return "Press F to send the clown to your decoy";
         if (player.IsHidden) return hiding ? "Hidden - wait for the clown" : (player.IsLockedIn ? "Hidden - stay quiet and hope he misses you" : "Hidden - stay quiet (E to leave)");
         if (player.AvailableSpot) return player.CardCount(CardType.Decoy) > 0 ? "Press E to hide   |   Press F to place the decoy" : "Press E to hide";
@@ -432,6 +442,9 @@ public class GameUI : MonoBehaviour
         vignette.sprite = MakeVignetteSprite();
         Stretch(vignette.rectTransform);
 
+        flashOverlay = MakeImage("FlashOverlay", root, Color.clear);
+        Stretch(flashOverlay.rectTransform);
+
         // Stamina: 4 segments (bottom left).
         Text staminaLabel = MakeText("StaminaLabel", root, "STAMINA", 20, TextAnchor.LowerLeft);
         Place(staminaLabel.rectTransform, new Vector2(0f, 0f), new Vector2(40f, 70f), new Vector2(300f, 26f));
@@ -453,7 +466,7 @@ public class GameUI : MonoBehaviour
         Place(checkedText.rectTransform, new Vector2(0f, 1f), new Vector2(40f, -90f), new Vector2(500f, 34f));
         checkedText.enabled = false;
 
-        Text controls = MakeText("Controls", root, "Click: walk | Space/Shift: run | E: hide / search | Q: Escape card | F: place Decoy / Girlfriend (trap) | Right mouse + drag: camera | Wheel: zoom", 20, TextAnchor.MiddleCenter);
+        Text controls = MakeText("Controls", root, "Click: walk | Space/Shift: run | E: hide / search | Q: Escape card | F: place Decoy / Girlfriend (trap) | G: Flashbang | Right mouse + drag: camera | Wheel: zoom", 20, TextAnchor.MiddleCenter);
         Place(controls.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 12f), new Vector2(1400f, 28f));
         controls.color = new Color(0.9f, 0.88f, 0.82f, 0.55f);
 

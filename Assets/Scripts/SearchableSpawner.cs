@@ -36,7 +36,7 @@ public class SearchableSpawner : MonoBehaviour
     public bool windowLightShadows = true;
 
     // Cards that can show up in several cabinets. The Decoy is special: exactly one per match.
-    static readonly CardType[] Spawnable = { CardType.Fortify, CardType.Escape, CardType.FightBack, CardType.Girlfriend };
+    static readonly CardType[] Spawnable = { CardType.Fortify, CardType.Escape, CardType.FightBack, CardType.Girlfriend, CardType.Flashbang };
 
     /// <summary>A random card that can show up in several cabinets (never the Decoy).</summary>
     public static CardType RandomCard()
@@ -74,7 +74,7 @@ public class SearchableSpawner : MonoBehaviour
                 var t = new Vector2Int(x, y);
                 if (!grid.IsWalkable(t)) continue;
                 if (player != null && GridManager.Chebyshev(t, player.Tile) <= 1) continue;
-                if (NearHidingSpot(t)) continue;
+                if (NearHidingSpot(grid, t)) continue;
                 if (LevelTweaks.NearGate(grid.TileCenter(t))) continue; // the garage gate sits on this wall
                 foreach (Vector2Int d in Dirs)
                 {
@@ -318,10 +318,20 @@ public class SearchableSpawner : MonoBehaviour
         return b.transform;
     }
 
-    static bool NearHidingSpot(Vector2Int t)
+    /// <summary>
+    /// True if a cabinet on this tile would get tangled up with a hiding spot: the tile itself or any tile next to it
+    /// (the places the player can stand to search it) is also in reach of a hiding spot, or the spot is only 1-2 tiles away.
+    /// There E would hide the player instead of searching. Such tiles are never used for cabinets.
+    /// </summary>
+    static bool NearHidingSpot(GridManager grid, Vector2Int t)
     {
         foreach (HidingSpot s in HidingSpot.All)
-            if (GridManager.Manhattan(t, s.Tile) <= 1) return true;
+        {
+            if (GridManager.Manhattan(t, s.Tile) <= 2) return true;
+            foreach (Vector2Int d in Dirs)
+                if (s.IsInReach(t + d, grid)) return true;
+            if (s.IsInReach(t, grid)) return true;
+        }
         return false;
     }
 

@@ -622,6 +622,18 @@ public class KillerAI : MonoBehaviour
         if (CurrentState == State.Search) GoToNextSpot();
     }
 
+    /// <summary>
+    /// Flashbang: blinds him for a few seconds (he stands still, like when stunned) and drops the search of the
+    /// spot he was at, so the player gets away.
+    /// </summary>
+    public void Flash(float seconds)
+    {
+        if (!hunting) return;
+        if (CurrentState == State.Check) checkTimer = 0f;
+        CheckProgress = 0f;
+        Stun(seconds);
+    }
+
     /// <summary>Freezes him for a few seconds (stars spin over his head).</summary>
     public void Stun(float seconds)
     {
@@ -670,6 +682,7 @@ public class KillerAI : MonoBehaviour
         LastHideWitnessed = false;
         LastHideReason = "none";
         if (!hunting || spot == null || grid == null) return;
+        if (stunTimer > 0f) return; // blinded / stunned: he sees nothing
 
         string reason = WitnessReason(fromTile) ?? WitnessReason(spot.Tile);
         LastHideWitnessed = reason != null;
